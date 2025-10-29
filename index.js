@@ -24,7 +24,23 @@ const app = express();
 app.use(express.json());
 
 // ADD YOUR WORK HERE
+const authRoutes = require("./routes/auth")
+const eventRoutes = require("./routes/events")
+const promotionRoutes = require("./routes/promotions")
+const transactionRoutes = require("./routes/transactions")
+const userRoutes = require("./routes/users")
+app.use("/auth", authRoutes)
+app.use("/events", eventRoutes)
+app.use("/promotions", promotionRoutes)
+app.use("/transactions", transactionRoutes)
+app.use("/users", userRoutes)
 
+// could not figure out a clean way to cover 405 cases
+// might need to check them manually each time
+// 404 Not Found
+app.use((req, res) => {
+    res.status(404).send({ "error": "Not Found" });
+});
 
 const server = app.listen(port, () => {
     console.log(`Server running on port ${port}`);
