@@ -28,6 +28,156 @@ enum PromotionType {
 }
 
 model User {
-  id       Int    @id @default(autoincrement())
-  username String
+  id          Int       @id @default(autoincrement())
+  utorid      String    @unique                      // 7–8 chars, alphanumeric (validate in code)
+  name        String
+  email       String    @unique                      // UofT email (validate in code)
+  password    String                                 // hashed
+  birthday    DateTime?
+  role        RoleType  @default(regular)
+  verified    Boolean   @default(false)
+  suspicious  Boolean   @default(false)              // cashier may be flagged
+  points      Int       @default(0)                  // current points balance
+  createdAt   DateTime  @default(now())
+  lastLogin   DateTime?
+  avatarUrl   String?
+
+  // Activation/reset token (used for activation + password reset flows)
+  resetToken     String?
+  resetExpiresAt DateTime?
+
+  // --- Relations ---
+  // Transactions this user OWNS (e.g., their purchases/redemptions/transfers)
+  ownedTransactions   Transaction[] @relation("OwnedBy")
+  // Transactions this user CREATED as an operator (cashier/manager/organizer)
+  createdTransactions Transaction[] @relation("CreatedBy")
+  // Redemptions this user PROCESSED (cashier)
+  processedRedemptions Transaction[] @relation("ProcessedBy")
+
+  // Event participation
+  organizedEvents EventOrganizer[]
+  guestEvents     EventGuest[]
+
+  @@index([utorid])
+  @@index([email])
+}
+
+// Transactions cover: purchase, adjustment, redemption, transfer, event
+// Store a signed 'amount' = net point delta (e.g., +earned, -redeemed).
+// 'spent' only for purchase; 'processedBy' only for redemption; 'eventId' only for event awards.
+// We keep specific foreign keys and you can surface a single "relatedId" in the API layer per spec.
+model Transaction {
+  id         Int             @id @default(autoincrement())
+  type       TransactionType
+  spent      Float?                                  // purchase only
+  amount     Int?                                     // signed points delta (e.g., +80, -1000)
+  remark     String?
+  suspicious Boolean             @default(false)      // manager can toggle; affects points immediately
+  createdAt  DateTime            @default(now())
+
+  // --- Ownership: who this transaction belongs to (the "customer"/user) ---
+  user       User?              @relation("OwnedBy", fields: [userId], references: [id])
+  userId     Int?
+
+  // --- Who created the transaction (cashier/manager/organizer or the user themself) ---
+  createdBy  User?              @relation("CreatedBy", fields: [createdById], references: [id])
+  createdById Int?
+
+  // --- Redemption processing cashier ---
+  processedBy   User?           @relation("ProcessedBy", fields: [processedById], references: [id])
+  processedById Int?
+
+  // --- Polymorphic "related" targets, stored explicitly for clarity ---
+  // adjustment -> relatedTransactionId (the adjusted transaction)
+  relatedTransactionId Int?
+  // transfer   -> relatedUserId (counterparty user id)
+  relatedUserId        Int?
+  // event award -> eventId
+  event       Event?           @relation(fields: [eventId], references: [id])
+  eventId     Int?
+
+  // Promotions applied to this transaction (M:N)
+  promotions  TransactionPromotion[]
+
+  @@index([type])
+  @@index([userId])
+  @@index([createdById])
+  @@index([processedById])
+  @@index([eventId])
+  @@index([relatedTransactionId])
+  @@index([relatedUserId])
+}
+
+// Events that give points; with capacity, publish state, and point pool to allocate
+model Event {
+  id            Int       @id @default(autoincrement())
+  name          String
+  description   String
+  location      String
+  startTime     DateTime
+  endTime       DateTime
+  capacity      Int?                         // null => unlimited
+  pointsRemain  Int                          // organizer allocates from this pool
+  pointsAwarded Int       @default(0)
+  published     Boolean   @default(false)
+
+  // Relations
+  organizers   EventOrganizer[]
+  guests       EventGuest[]
+  transactions Transaction[]                 // event award transactions
+
+  @@index([startTime])
+  @@index([endTime])
+  @@index([published])
+}
+
+// Explicit join table for event organizers (prevents organizer=guest at the same time in app logic)
+model EventOrganizer {
+  event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId Int
+  user    User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId  Int
+
+  @@id([eventId, userId])
+  @@index([userId])
+}
+
+// Explicit join table for event guests/RSVPs
+model EventGuest {
+  event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId Int
+  user    User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId  Int
+
+  @@id([eventId, userId])
+  @@index([userId])
+}
+
+// Promotions: automatic or one-time; optional minSpending, rate, points
+model Promotion {
+  id          Int            @id @default(autoincrement())
+  name        String
+  description String
+  type        PromotionType
+  startTime   DateTime
+  endTime     DateTime
+  minSpending Float?
+  rate        Float?         // extra points per $ (on top of base 1 per $0.25)
+  points      Int?
+
+  transactions TransactionPromotion[]
+
+  @@index([type])
+  @@index([startTime])
+  @@index([endTime])
+}
+
+// M:N between transactions and promotions
+model TransactionPromotion {
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  transactionId Int
+  promotion     Promotion   @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  promotionId   Int
+
+  @@id([transactionId, promotionId])
 }
