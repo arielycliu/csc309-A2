@@ -7,7 +7,7 @@ const guestsRouter = require('./guests');
 const eventTxRouter = require('./transactions');
 
 // assume auth middleware is ready
-const { CLEARANCE, requireClearance, roleRank } = require('../../config/auth');
+const { CLEARANCE, requireClearance, roleRank } = require('../temp_middleware');
 
 
 const router = express.Router();
