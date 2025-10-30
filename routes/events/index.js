@@ -1,5 +1,7 @@
 const express = require("express");
-const prisma = require('../../prisma'); // assume prisma.js
+// const prisma = require('../../prisma'); // assume prisma.js
+const { PrismaClient } = require("@prisma/client");
+const prisma = new PrismaClient();
 
 // To be implemented
 const organizersRouter = require('./organizers');
@@ -24,6 +26,8 @@ async function isManagerOrOrganizer(req, eventId) {
   });
   return !!organizer;
 }
+
+const isPositiveInt = (n) => Number.isInteger(n) && n > 0;
 
 function parseISO(s) {
   const d = new Date(s);
