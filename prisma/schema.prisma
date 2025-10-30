@@ -117,6 +117,7 @@ model Event {
   startTime     DateTime
   endTime       DateTime
   capacity      Int?                         // null => unlimited
+  pointsTotal   Int
   pointsRemain  Int                          // organizer allocates from this pool
   pointsAwarded Int       @default(0)
   published     Boolean   @default(false)
