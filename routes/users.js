@@ -32,7 +32,6 @@ router.post("/users", requireClearance(CLEARANCE.CASHIER), validatePayload(creat
    }
 
    //create user 
-
    try{
         resetToken = uuidv4();
         expiresAt = new Date();
@@ -51,31 +50,58 @@ router.post("/users", requireClearance(CLEARANCE.CASHIER), validatePayload(creat
 
 const getUsersPayload = {
     name: {type: 'string', required: false},
-    role: {type: 'string', required: false},
+    role: {type: 'enum', values: ['regular', 'cashier', 'manager', 'superuser'], required: false},
     verified: {type: 'boolean', required: false},
     activated: {type: 'boolean', required: false},
     page: {type: 'int', required: false}
 
 }
 
-router.get("/users", requireClearance(CLEARANCE.MANAGER), async(req, res)=> {
+router.get("/users", requireClearance(CLEARANCE.MANAGER), validatePayload(getUsersPayload), async(req, res)=> {
 
     //check which fields were included in request 
     const {name, role, verified, activated, page, limit} = req.body;
+    page = page|| 1;
+    const take = limit || 10;
+    const skip = (page - 1) * take;
 
     where = {};
 
-    if(name){
-        if(typeof name == "string"){
+    if (name) where.name = name;
+    if (role) where.role = role;
+    if (verified) where.verified = verified;
+    if (activated) where.lastLogin = { not: null };
 
-        }
-        else{
-
-        }
+    try{
+        const users = await prisma.findMany({
+            where, 
+            skip, 
+            take, 
+            select: {id: true, utorid: true, name: true, email: true, 
+                    birthday: true, role: true, points: true, createdAt: true, 
+                    lastLogin: true, verified: true, avatarUrl: true}
+        });
+    }catch(err){
+        res.status(500).json({error: `error getting users ${err}`});
     }
 
+    res.status(200).json({count: users.length, results: users});
 
-})
+
+});
+
+router.get("/users/:userId", reuquiredClearance(CLEARANCE.CASHIER), async(req, res)=>{
+
+    // build select depengind on users role
+    select = {}
+    
+    if(req.auth.role === 'cashier'){
+        select = {}
+    }else{
+        select = {}
+    }
+
+});
 
 
 
