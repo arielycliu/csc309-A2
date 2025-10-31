@@ -23,7 +23,11 @@ const app = express();
 
 app.use(express.json());
 
-// ADD YOUR WORK HERE
+const authRoutes = require("./routes/auth");
+const transactionRoutes = require("./routes/transaction");
+
+app.use("/auth", authRoutes);
+app.use("/transactions", transactionRoutes);
 
 
 const server = app.listen(port, () => {

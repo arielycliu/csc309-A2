@@ -117,14 +117,17 @@ model Event {
   startTime     DateTime
   endTime       DateTime
   capacity      Int?                         // null => unlimited
+  pointsTotal   Int
   pointsRemain  Int                          // organizer allocates from this pool
   pointsAwarded Int       @default(0)
   published     Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  createdById   Int
 
   // Relations
   organizers   EventOrganizer[]
   guests       EventGuest[]
-  transactions Transaction[]                 // event award transactions
+  eventTxs     Transaction[]                 // event award transactions
 
   @@index([startTime])
   @@index([endTime])
@@ -144,13 +147,17 @@ model EventOrganizer {
 
 // Explicit join table for event guests/RSVPs
 model EventGuest {
-  event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  eventId Int
-  user    User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId  Int
+  id        Int   @id @default(autoincrement())
+  event     Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId   Int
+  user      User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    Int
+  confirmed Boolean  @default(false)
 
-  @@id([eventId, userId])
-  @@index([userId])
+  // @@id([eventId, userId])
+  // @@index([userId])
+  @@index([eventId, userId], name: "event_guest_user")
+  @@unique([eventId, userId])
 }
 
 // Promotions: automatic or one-time; optional minSpending, rate, points
