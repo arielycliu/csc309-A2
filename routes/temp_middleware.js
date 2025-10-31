@@ -36,7 +36,37 @@ function requireClearance(minClearance) {
   ];
 }
 
-module.exports = { CLEARANCE, requireClearance, requireAuth, roleRank };
+// function validatePayload(schema){ //testing functionality
+//   // pass in schema to validate ex. => { fieldName: {type: 'string', values:[],  required: true/false }}
+//   return(req, res, next) => {
+//     const errors = [];
+    
+//     for(const [fieldName, config] of Object.entries(schema)){
+//       const value = req.body[fieldName]
+//       const {type, required, values} = config;
+
+//       if(required && (value === undefined || value === null || value === '')){
+//         errors.push(`Missing required Field: ${field}`);
+//       }
+
+//       if (type === 'enum') {
+//         if (!values.includes(value)) {
+//           errors.push(`Field "${field}" must be one of [${values.join(', ')}]`);
+//         }
+//       } else if (typeof value !== type) {
+//         errors.push(`Field "${field}" must be of type ${type}`);
+//       }
+//     }
+
+//     if(errors.length){
+//       return res.status(400).json({error: errors});
+//     }
+
+//     next();
+//   }
+// }
+
+module.exports = { CLEARANCE, requireClearance, requireAuth, roleRank};
 
 // temp_middleware.js
 // require('dotenv').config();

@@ -32,7 +32,7 @@ model User {
   utorid      String    @unique                      // 7–8 chars, alphanumeric (validate in code)
   name        String
   email       String    @unique                      // UofT email (validate in code)
-  password    String                                 // hashed
+  password    String?                                 // hashed (password not immediately set)
   birthday    DateTime?
   role        RoleType  @default(regular)
   verified    Boolean   @default(false)
