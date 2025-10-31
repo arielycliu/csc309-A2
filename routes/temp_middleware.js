@@ -36,4 +36,30 @@ function requireClearance(minClearance) {
   ];
 }
 
-module.exports = { CLEARANCE, requireClearance, requireAuth, roleRank };
+function validatePayload(schema){
+  // pass in schema to validate ex. => { fieldName: {type: 'string', required: true/false }}
+  return(req, res, next) => {
+    const errors = [];
+    
+    for(const [fieldName, config] of Object.entries(schema)){
+      const value = req.body[fieldName]
+      const {type, required} = config;
+
+      if(required && (value === undefined || value === null || value === '')){
+        errors.push(`Missing required Field: ${field}`);
+      }
+
+      if(value !== undefined && typeof value !== type){
+        errors.push(`Field "${fieldName}" must be of type ${type}`)
+      }
+    }
+
+    if(errors.length){
+      return res.status(400).json({error: errors});
+    }
+
+    next();
+  }
+}
+
+module.exports = { CLEARANCE, requireClearance, requireAuth, roleRank, validatePayload};
