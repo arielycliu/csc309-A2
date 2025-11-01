@@ -55,7 +55,17 @@ router.post("/", requireClearance(CLEARANCE.CASHIER), validatePayload(createUser
             data: {utorid, name, email, resetExpiresAt, resetToken},
             select: {id: true, utorid: true, name: true, email: true, verified: true, resetExpiresAt:true, resetToken:true}
         });
-        return res.status(201).json(user);
+        // Return response with expiresAt instead of resetExpiresAt for consistency
+        const response = {
+            id: user.id,
+            utorid: user.utorid,
+            name: user.name,
+            email: user.email,
+            verified: user.verified,
+            expiresAt: user.resetExpiresAt,
+            resetToken: user.resetToken
+        };
+        return res.status(201).json(response);
 
    }catch(err){
         return res.status(500).json({error: `error creating user ${err.message}`});

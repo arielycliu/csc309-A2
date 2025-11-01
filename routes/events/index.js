@@ -351,6 +351,20 @@ router.patch('/:eventId', requireClearance(CLEARANCE.REGULAR), async (req, res) 
   }
 });
 
+/* DELETE /events/:eventId */
+router.delete('/:eventId', requireClearance(CLEARANCE.MANAGER),  async (req, res) => {
+  try {
+    const eventId = Number(req.params.eventId);
+    if (!Number.isInteger(eventId)) return res.status(400).json({ error: 'Invalid eventId' });
+    const ev = await prisma.event.findUnique({ where: { id: eventId } });
+    if (!ev) return res.status(404).json({ error: 'Event not found' });
+    await prisma.event.delete({ where: { id: eventId } });
+    return res.status(204).send();
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to delete event' });
+  }
+});
+
 // sub-routers
 router.use('/:eventId/organizers', organizersRouter);
 router.use('/:eventId/guests', guestsRouter);
