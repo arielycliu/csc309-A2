@@ -513,6 +513,36 @@ router.patch('/:promotionId', requireClearance(CLEARANCE.MANAGER), async (req, r
     res.status(200).json(response);
 });
 
+// update an existing promotion
+router.delete('/:promotionId', requireClearance(CLEARANCE.MANAGER), async (req, res) => {
+    const promotionId = req.params["promotionId"];
+
+    if (validateInputFields([
+        () => validators.promotionId(promotionId, true),
+    ], res)) return;
+
+    const existingPromotion = await prisma.promotion.findUnique({
+        where: { id: parseInt(promotionId) },
+    });
+
+    if (!existingPromotion) {
+        return res.status(404).json({ 'error': 'Promotion not found' });
+    } 
+    
+    const now = new Date();
+    const originalStartTime = new Date(existingPromotion.startTime);
+    const hasStarted = originalStartTime < now;
+    if (hasStarted) {
+        return res.status(403).json({ 'error': 'Forbidden to edit ongoing promotion' });
+    }
+
+    await prisma.promotion.delete({
+        where: { id: parseInt(promotionId) }
+    })
+
+    res.status(204).send('No Content');
+});
+
 router.all('/', async (req, res) => {
     res.status(405).json({ 'error': 'Method Not Allowed' });
 });
