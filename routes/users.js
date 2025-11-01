@@ -9,10 +9,13 @@ const express = require("express");
 const router = express.Router();
 
 /* 
-notes: 
+ notes: 
     need to figure out how to get promotions 
     confirm functionality of clearance 
-    lastLogin check how it works
+    lastLogin check how it works\
+
+    users endpoint remove 
+    line 180 promotions.js 
     
 */
 
@@ -24,7 +27,7 @@ const createUsersPayload = z.object({
     }),
 });
 
-router.post("/users", /*requireClearance(CLEARANCE.CASHIER),*/ validatePayload(createUsersPayload), async (req, res) => {
+router.post("/", requireClearance(CLEARANCE.CASHIER), validatePayload(createUsersPayload), async (req, res) => {
    //user authenticated as cashier or higher, required field checked 
    const {utorid, name, email} = req.body;
 
@@ -69,7 +72,7 @@ const getUsersPayload = z.object({
 
 });
 
-router.get("/users", /*requireClearance(CLEARANCE.MANAGER),*/ validatePayload(getUsersPayload), async(req, res)=> {
+router.get("/", requireClearance(CLEARANCE.MANAGER), validatePayload(getUsersPayload), async(req, res)=> {
 
     //check which fields were included in request 
     const {name, role, verified, activated, page, limit} = req.body;
@@ -116,9 +119,8 @@ const patchSelfPayload = z.object({
     birthday: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "must be YYYY-MM-DD").optional()
 });
 
-router.patch("/users/me", upload.single("avatar"), /*reuquiredClearance(CLEARANCE.REGULAR),*/ validatePayload(patchSelfPayload), async(req, res)=> {
-    // req.auth = {};
-    // req.auth.id = 1;
+router.patch("/me", upload.single("avatar"), reuquiredClearance(CLEARANCE.REGULAR), validatePayload(patchSelfPayload), async(req, res)=> {
+    
 
     var data = {};
     const {name, email, birthday} = req.body;
@@ -144,7 +146,7 @@ router.patch("/users/me", upload.single("avatar"), /*reuquiredClearance(CLEARANC
 
     try{
         const user = await prisma.user.update({
-            where: {id: req.auth.id},
+            where: {id: req.user.sub},
             data: data,
             select: {id: true, utorid:true, name:true, email:true, 
                     birthday:true, role:true, points:true,
@@ -158,9 +160,8 @@ router.patch("/users/me", upload.single("avatar"), /*reuquiredClearance(CLEARANC
 
 });
 
-router.get("/users/:userId"/*, reuquiredClearance(CLEARANCE.CASHIER)*/, async(req, res)=>{
-    req.auth = {};
-    req.auth.role = 'manager';
+router.get("/:userId", reuquiredClearance(CLEARANCE.CASHIER), async(req, res)=>{
+    
 
     // build select depengind on users role
     var select = {}
@@ -171,7 +172,7 @@ router.get("/users/:userId"/*, reuquiredClearance(CLEARANCE.CASHIER)*/, async(re
     }
 
     
-    if(req.auth.role === 'cashier'){
+    if(req.user.role === 'cashier'){
         select.id = true;
         select.utorid = true;
         select.name = true;
@@ -220,9 +221,8 @@ const patchUserSchema = z.object({
     role: z.enum(['regular', 'cashier', 'manager', 'superuser']).optional(),
 });
 
-router.patch("/users/:userId", /* reuquiredClearance(CLEARANCE.MANAGER), */ validatePayload(patchUserSchema), async(req, res)=>{
-    // req.auth = {};
-    // req.auth.role = 'superuser';
+router.patch("/:userId", reuquiredClearance(CLEARANCE.MANAGER), validatePayload(patchUserSchema), async(req, res)=>{
+    
     
     const {email, verified, suspicious, role} = req.body;
     var data = {};
@@ -257,7 +257,7 @@ router.patch("/users/:userId", /* reuquiredClearance(CLEARANCE.MANAGER), */ vali
     }
     if(role){
         //for manager can only update roles of cashier or regular
-        if(req.auth.role === 'manager' && (role !== 'cashier' || role !== 'regular') ){
+        if(req.user.role === 'manager' && (role !== 'cashier' || role !== 'regular') ){
             return res.status(403).json({error: `manager not permitted to make role update for role - ${role}`});   
         }
         
@@ -279,10 +279,10 @@ router.patch("/users/:userId", /* reuquiredClearance(CLEARANCE.MANAGER), */ vali
 });
 
 
-// router.get("/users/me", requireClearance(CLEARANCE.REGULAR), async(req, res) =>{
+// router.get("/me", requireClearance(CLEARANCE.REGULAR), async(req, res) =>{
 //     try{
 //         const user = await prisma.findUnique({
-//             where: {id: req.auth.id},
+//             where: {id: req.user.sub},
 //             data: data,
 //             select: {id: true, utorid:true, name:true, email:true, 
 //                     birthday:true, role:true, points:true,
@@ -309,12 +309,12 @@ router.patch("/users/:userId", /* reuquiredClearance(CLEARANCE.MANAGER), */ vali
 //   .regex(/[^A-Za-z0-9]/, "Password must contain at least one special character")
 // });
 
-// router.patch("/users/me/password", reuquiredClearance(CLEARANCE.REGULAR), validatePayload(updateOwnPasswordSchema), async(req, res)=> {
+// router.patch("/me/password", reuquiredClearance(CLEARANCE.REGULAR), validatePayload(updateOwnPasswordSchema), async(req, res)=> {
 //     const {old, new:newPassword} = req.body;
 
 //     try{
 //         const user = await prisma.user.findUnique({
-//             where: { id: req.auth.id },
+//             where: { id: req.user.sub },
 //         });
 
 //         if (!user) {

@@ -39,7 +39,7 @@ model User {
   suspicious  Boolean   @default(false)              // cashier may be flagged
   points      Int       @default(0)                  // current points balance
   createdAt   DateTime  @default(now())
-  lastLogin   DateTime  @default(now())
+  lastLogin   DateTime?
   avatarUrl   String?
 
   // Activation/reset token (used for activation + password reset flows)
