@@ -21,7 +21,7 @@ async function isManagerOrOrganizer(req, eventId) {
   if (roleRank(req.auth.role) >= 3) return true; // manager (3) or superuser (4)
   // organizer?
   const organizer = await prisma.eventOrganizer.findUnique({
-    where: { eventId_userId: { eventId, userId: req.auth.uid } }, // (eventId, userId) as composite PK
+    where: { eventId_userId: { eventId, userId: req.auth.sub } }, // (eventId, userId) as composite PK
     select: { eventId: true },
   });
   return !!organizer;
@@ -72,7 +72,7 @@ router.post("/", requireClearance(CLEARANCE.MANAGER), async (req, res) => {
     if (!isPositiveInt(pts)) return res.status(400).json({ error: 'points must be a positive integer' });
 
     // CreatedBy
-    const createdBy = req.auth.uid;
+    const createdBy = req.auth.sub;
 
     // Create the event
     const created = await prisma.event.create({
@@ -261,7 +261,7 @@ router.patch('/:eventId', requireClearance(CLEARANCE.REGULAR), async (req, res) 
 
     const isMgr = roleRank(req.auth.role) >= 3;
     const isOrg = await prisma.eventOrganizer.findUnique({
-      where: { eventId_userId: { eventId, userId: req.auth.uid } },
+      where: { eventId_userId: { eventId, userId: req.auth.sub } },
     });
 
     if (!isMgr && !isOrg) return res.status(403).json({ error: 'Forbidden' });

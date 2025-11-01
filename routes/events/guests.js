@@ -23,7 +23,7 @@ router.post('/', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
     if (!ev) return res.status(404).json({ error: 'Event not found' });
 
     const isMgr = roleRank(req.auth.role) >= 3;
-    const isOrg = await isOrganizer(req.auth.uid, eventId);
+    const isOrg = await isOrganizer(req.auth.sub, eventId);
     if (!isMgr && !isOrg) return res.status(403).json({ error: 'Forbidden' });
 
     const { utorid } = req.body || {};
@@ -89,12 +89,12 @@ router.post('/me', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
 
     const ev = await prisma.event.findUnique({ where: { id: eventId }, include: { _count: { select: { guests: true } } } });
     if (!ev) return res.status(404).json({ error: 'Event not found' });
-    if (!ev.published) return res.status(404).json({ error: 'Event not found' }); // hidden from regular users
+    if (!ev.published) return res.status(404).json({ error: 'Event not found. Not published yet. (eventId/guests/me)' }); // hidden from regular users
     if (new Date() > ev.endTime) return res.status(410).json({ error: 'Event has ended' });
 
     // cannot RSVP if organizer
     const isOrg = await prisma.eventOrganizer.findUnique({
-      where: { eventId_userId: { eventId, userId: req.auth.uid } },
+      where: { eventId_userId: { eventId, userId: req.auth.sub } },
     });
     if (isOrg) return res.status(400).json({ error: 'Organizers cannot RSVP as guests' });
 
@@ -103,11 +103,11 @@ router.post('/me', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
       return res.status(410).json({ error: 'Event is full' });
     }
 
-    const exists = await prisma.eventGuest.findFirst({ where: { eventId, userId: req.auth.uid } });
+    const exists = await prisma.eventGuest.findFirst({ where: { eventId, userId: req.auth.sub } });
     if (exists) return res.status(400).json({ error: 'Already on guest list' });
 
-    const me = await prisma.user.findUnique({ where: { id: req.auth.uid }, select: { id: true, utorid: true, name: true } });
-    const added = await prisma.eventGuest.create({ data: { eventId, userId: req.auth.uid, confirmed: false } });
+    const me = await prisma.user.findUnique({ where: { id: req.auth.sub }, select: { id: true, utorid: true, name: true } });
+    const added = await prisma.eventGuest.create({ data: { eventId, userId: req.auth.sub, confirmed: false } });
 
     return res.status(201).json({
       id: ev.id,
@@ -131,7 +131,7 @@ router.delete('/me', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
     if (!ev) return res.status(404).json({ error: 'Event not found' });
     if (new Date() > ev.endTime) return res.status(410).json({ error: 'Event has ended' });
 
-    const guest = await prisma.eventGuest.findFirst({ where: { eventId, userId: req.auth.uid } });
+    const guest = await prisma.eventGuest.findFirst({ where: { eventId, userId: req.auth.sub } });
     if (!guest) return res.status(404).json({ error: 'Not on guest list' });
 
     await prisma.eventGuest.delete({ where: { id: guest.id } });
