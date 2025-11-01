@@ -71,7 +71,7 @@ router.post("/tokens", async (req, res) => {
             where: { utorid: normalizeUtorid(utorid) },
         });
 
-        if (!user) {
+        if (!user || !user.password) {
             return sendError(res, 401, "Invalid utorid or password");
         }
 
@@ -127,7 +127,8 @@ router.post("/resets", async (req, res) => {
         });
 
         if (!user) {
-            return res.status(202).json({ expiresAt: null, resetToken: null });
+            // Return empty strings instead of null for non-existent users
+            return res.status(202).json({ expiresAt: "", resetToken: "" });
         }
 
         const resetToken = uuidv4();
