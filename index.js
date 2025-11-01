@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 'use strict';
+require('dotenv').config();
 
 const Port = () => {
     const args = process.argv;
