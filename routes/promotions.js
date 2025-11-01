@@ -177,8 +177,12 @@ router.get('/', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
         filters.endTime = { gte: now };
 
         // removed used promotions
+        const transactionIds = await prisma.user.findUnique({
+            where: { userId },
+            select: { ownedTransactions: { select: { id: true } } }
+        });
         const usedPromotionIds = await prisma.transactionPromotion.findMany({
-            where: { transaction: { userId } },
+            where: { transaction: { in: transactionIds } },
             select: { promotionId: true }
         });
         if (usedPromotionIds.length > 0) {
