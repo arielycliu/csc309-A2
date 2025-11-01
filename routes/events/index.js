@@ -6,7 +6,7 @@ const organizersRouter = require('./organizers');
 const guestsRouter = require('./guests');
 const eventTxRouter = require('./transactions');
 
-const { CLEARANCE, requireClearance, roleRank } = require('../temp_middleware');
+const { CLEARANCE, requireClearance, roleRank } = require('../auth_middleware');
 
 
 const router = express.Router();
