@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 
-const port = (() => {
+const Port = () => {
     const args = process.argv;
 
     if (args.length !== 3) {
@@ -16,40 +16,52 @@ const port = (() => {
     }
 
     return num;
-})();
+};
 
 const express = require("express");
+const { expressjwt: jwt } = require("express-jwt");
 const app = express();
 
 app.use(express.json());
 
-const authRoutes = require("./routes/auth")
+// JWT middleware - decodes token and attaches to req.auth
+app.use(
+    jwt({
+        secret: process.env.JWT_SECRET || "test-secret-key",
+        algorithms: ["HS256"],
+        credentialsRequired: false,
+    })
+);
 
-// Protected routers
-// req.auth is set by temp_middleware.requireAuth
-const eventRoutes = require("./routes/events")
-const promotionRoutes = require("./routes/promotions")
-const transactionRoutes = require("./routes/transactions")
-const userRoutes = require("./routes/users")
-app.use("/auth", authRoutes)
-app.use("/events", eventRoutes)
-app.use("/promotions", promotionRoutes)
-app.use("/transactions", transactionRoutes)
-app.use("/users", userRoutes)
+const authRoutes = require("./routes/auth");
+const eventRoutes = require("./routes/events");
+const promotionRoutes = require("./routes/promotions");
+const transactionRoutes = require("./routes/transactions");
+const userRoutes = require("./routes/users");
+
+app.use("/auth", authRoutes);
+app.use("/events", eventRoutes);
+app.use("/promotions", promotionRoutes);
+app.use("/transactions", transactionRoutes);
+app.use("/users", userRoutes);
 
 app.use((err, req, res, next) => {
-    // catch for express-jwt UnauthorizedError
-    if (err.name === 'UnauthorizedError') {
-        return res.status(401).json({ error: 'Unauthorized: invalid or missing token' });
+    if (err.name === "UnauthorizedError") {
+        return res.status(401).json({ error: "Unauthorized: invalid or missing token" });
     }
+    return next(err);
 });
 
+if (require.main === module) {
+    const port = Port();
+    const server = app.listen(port, () => {
+        console.log(`Server running on port ${port}`);
+    });
 
-const server = app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
-});
+    server.on("error", (err) => {
+        console.error(`cannot start server: ${err.message}`);
+        process.exit(1);
+    });
+}
 
-server.on('error', (err) => {
-    console.error(`cannot start server: ${err.message}`);
-    process.exit(1);
-});
+module.exports = app;
