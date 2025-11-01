@@ -1,6 +1,5 @@
 const { CLEARANCE, requireClearance, roleRank } = require('./temp_middleware');
-const { v4: uuidv4 } = require('uuid');
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient} = require('@prisma/client');
 
 const prisma = new PrismaClient();
 const express = require("express");
@@ -111,6 +110,22 @@ function validateNumber(value, fieldName, options = {}) {
     return null;
 }
 
+function validateBoolean(value, fieldName, options = {}) {
+    const { required = false } = options;
+
+    if (required && value === undefined) {
+        return `missing field: ${fieldName}`;
+    } else if (!required && value === undefined) {
+        return null;
+    }
+
+    if (typeof value !== 'boolean') {
+        return `${fieldName} should be a boolean`;
+    }
+
+    return null;
+}
+
 const validators = {
     name(name, required = true) {
         return validateString(name, 'name', { required });
@@ -155,13 +170,21 @@ const validators = {
     limit(limit, required = false) {
         return validateNumber(limit, 'limit', { required, minValue: 0, minInclusive: true });
     },
+
+    started(started, required = false) {
+        return validateBoolean(started, 'started', { required });
+    },
+
+    ended(ended, required = false) {
+        return validateBoolean(ended, 'ended', { required });
+    },
 };
 
 function validateInputFields(validations, res) {
     for (let validationFunction of validations) {
         let error = validationFunction();
         if (error) {
-            res.status(400).json({ 'error': error });
+            res.status(400).json({ 'error': `Bad Request: ${error}` });
             return true;
         }
     }
@@ -209,6 +232,93 @@ router.post('/', requireClearance(CLEARANCE.MANAGER), async (req, res) => {
     });
 
     res.status(201).json(newPromotion);
+});
+
+// retrieve a list of promotions: different features depending on role
+router.get('/', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
+    const rank = roleRank(req.auth?.role);
+    const isManagerOrHigher = rank >= 3;
+    const { name, type, page, limit, started, ended } = req.query;
+
+    const validations = [
+        () => validators.name(name, false),
+        () => validators.type(type, false),
+        () => validators.page(page, false),
+        () => validators.limit(limit, false),
+    ];
+
+    if (isManagerOrHigher) {
+        validations.push(
+            () => validators.started(started, false),
+            () => validators.ended(ended, false)
+        );
+    }
+
+    if (validateInputFields(validations, res)) return;
+
+    const pageNumber = parseInt(page) || 1;
+    const limitNumber = parseInt(limit) || 10;
+    const skip = (pageNumber - 1) * limitNumber;
+    const take = limitNumber;
+
+    const now = new Date();
+    let filters = {};
+
+    if (name) {
+        filters.name = { contains: name, mode: 'insensitive' };
+    }
+    if (type && ['automatic', 'one-time'].includes(type)) {
+        filters.type = { type };
+    }
+
+    if (isManagerOrHigher) {
+        if (started && ended) {
+            res.status(405).json({ 'error': 'Bad request: both "started" and "ended" fields are specified' });
+        }
+        if (started) {
+            filters.startTime = { lte: now };
+        }
+        if (ended) {
+            filters.endTime = { lte: now };
+        }
+    }
+    if (req.auth?.role === 'regular') {
+        console.log("regular user");
+        const userId = req.auth?.sub;
+
+        // regular user: show only active promotions
+        filters.startTime = { lte: now };
+        filters.endTime = { gte: now };
+
+        // removed used promotions
+        const usedPromotionIds = await prisma.transactionPromotion.findMany({
+            where: { transaction: { userId } },
+            select: { promotionId: true }
+        });
+        if (usedPromotionIds.length > 0) {
+            filters.id = { notIn: usedPromotionIds.map(p => p.promotionId) };
+        }
+    }
+
+    const count = await prisma.promotion.count({ where: filters });
+    const results = await prisma.promotion.findMany({
+        where: filters,
+        skip,
+        take,
+        orderBy: { startTime: 'asc' },
+        select: {
+            id: true,
+            name: true,
+            type: true,
+            startTime: isManagerOrHigher,
+            endTime: true,
+            minSpending: true,
+            rate: true,
+            points: true,
+        },
+    });
+    
+    res.status(200).json({ count, results });
 });
 
 router.all('/', async (req, res) => {
