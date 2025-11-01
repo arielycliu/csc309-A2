@@ -178,6 +178,10 @@ const validators = {
     ended(ended, required = false) {
         return validateBoolean(ended, 'ended', { required });
     },
+
+    promotionId(promotionId, required = true) {
+        return validateNumber(promotionId, 'promotionId', { required });
+    },
 };
 
 function validateInputFields(validations, res) {
@@ -234,10 +238,11 @@ router.post('/', requireClearance(CLEARANCE.MANAGER), async (req, res) => {
     res.status(201).json(newPromotion);
 });
 
-// retrieve a list of promotions: different features depending on role
+// retrieve a list of promotions: different features depending on role (manager vs regular)
 router.get('/', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
     const rank = roleRank(req.auth?.role);
     const isManagerOrHigher = rank >= 3;
+    const isRegular = req.auth?.role === 'regular';
     const { name, type, page, limit, started, ended } = req.query;
 
     const validations = [
@@ -282,7 +287,7 @@ router.get('/', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
             filters.endTime = { lte: now };
         }
     }
-    if (req.auth?.role === 'regular') {
+    if (isRegular) {
         console.log("regular user");
         const userId = req.auth?.sub;
 
@@ -319,6 +324,46 @@ router.get('/', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
     });
     
     res.status(200).json({ count, results });
+});
+
+// retrieve a single event: different features depending on role (manager vs regular)
+router.get('/:promotionId', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
+    const promotionId = req.params["promotionId"];
+    const rank = roleRank(req.auth?.role);
+    const isManagerOrHigher = rank >= 3;
+    const isRegularOrHigher = rank >= 1;
+
+    const validations = [
+        () => validators.promotionId(promotionId, true),
+    ];
+    if (validateInputFields(validations, res)) return;
+
+    let filters = {}
+    if (isManagerOrHigher) {
+        filters.id = promotionId;
+    } else if (isRegularOrHigher) {
+        filters.startTime = { lte: now };
+        filters.endTime = { gte: now };
+        filters.id = promotionId;
+    }
+    const promotion = await prisma.promotion.findFirst({
+        where: filters,
+        select: {
+            id: true,
+            name: true,
+            description: true,
+            type: true,
+            startTime: isManagerOrHigher,
+            endTime: true,
+            minSpending: true,
+            rate: true,
+            points: true,
+        },
+    })
+    if (!promotion) {
+        return res.status(404).json({ 'error': 'Promotion not found' })
+    }
+    res.status(200).json(promotion);
 });
 
 router.all('/', async (req, res) => {
