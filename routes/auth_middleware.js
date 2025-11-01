@@ -22,7 +22,7 @@ function roleRank(role) {
 const requireAuth = jwt({
   secret: process.env.JWT_SECRET,
   algorithms: ['HS256'],
-});
+}); // by default, auth is attached to req -> req.auth
 
 function requireClearance(minClearance) {
   if (minClearance === CLEARANCE.ANY) return (req, _res, next) => next();

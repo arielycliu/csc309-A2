@@ -1,4 +1,4 @@
-const { CLEARANCE, requireClearance, validatePayload } = require('./temp_middleware');
+const { CLEARANCE, requireClearance, validatePayload } = require('./auth_middleware');
 const { v4: uuidv4 } = require('uuid');
 const {z} = require("zod");
 const bcrypt = require('bcrypt');

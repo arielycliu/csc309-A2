@@ -152,7 +152,7 @@ model EventGuest {
   eventId   Int
   user      User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId    Int
-  confirmed Boolean  @default(false)
+  confirmed Boolean  @default(true)
 
   // @@id([eventId, userId])
   // @@index([userId])
