@@ -25,6 +25,9 @@ app.use(express.json());
 
 // ADD YOUR WORK HERE
 const authRoutes = require("./routes/auth")
+
+// Protected routers
+// req.auth is set by temp_middleware.requireAuth
 const eventRoutes = require("./routes/events")
 const promotionRoutes = require("./routes/promotions")
 const transactionRoutes = require("./routes/transactions")
