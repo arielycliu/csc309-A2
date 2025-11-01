@@ -23,8 +23,8 @@ const validators = {
         return validateString(remark, 'remark', { required })
     },
 
-    relatedId(relatedId, type, required = false) { // must be used with type
-        if (relatedId !== undefined && validateEnum(type, 'type', { required: true })) {
+    relatedId(relatedId, type, allowedValues, required = false) { // must be used with type
+        if (relatedId !== undefined && validateEnum(type, 'type', allowedValues, { required: true })) {
             return 'relatedId must be used with type. ' + validateEnum(type, 'type', ['redemption'], { required: true })
         }
         return validateNumber(relatedId, 'relatedId', { required })
@@ -34,8 +34,12 @@ const validators = {
         return validateNumber(promotionId, 'promotionId', { required })
     },
 
-    amount(amount, required = false) { // must be used with operator
-        if (amount !== undefined && validateEnum(operator, 'operator', ['gte', 'lte'], { required: true }))
+    operator(operator, allowedValues, required = false) {
+        return validateEnum(operator, 'operator', allowedValues, { required: false });
+    },
+
+    amountWithOperator(amount, operator, allowedValues, required = false) { // must be used with operator
+        if (amount !== undefined && validateEnum(operator, 'operator', allowedValues, { required: true }))
         return validateNumber(amount, 'amount', { required })
     },
 
@@ -201,8 +205,86 @@ router.post('/me/transactions', requireClearance(CLEARANCE.REGULAR), async (req,
     res.status(201).json(result);
 });
 
+// Retrieve a list of transactions owned by the currently logged in user
 router.get('/me/transactions', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
+    const {
+        type,
+        relatedId,
+        promotionId,
+        operator,
+        amount,
+        page,
+        limit
+    } = req.body;
 
+    const transactionTypes = ['purchase', 'redemption', 'adjustment', 'event', 'transfer'];
+    let validators = [
+        () => validators.type(type, transactionTypes, false),
+        () => validators.relatedId(relatedId, type, transactionTypes, false),
+        () => validators.promotionId(promotionId, false),
+        () => validators.operator(operator, ['gte', 'lte'], false),
+        () => validators.amountWithOperator(amount, operator, ['gte', 'lte'], false),
+        () => validators.page(page, false),
+        () => validators.limit(limit, false)
+    ]
+    if (validateInputFields(validators, res)) return;
+
+    const pageNumber = parseInt(page) || 1;
+    const limitNumber = parseInt(limit) || 10;
+    const skip = (pageNumber - 1) * limitNumber;
+    const take = limitNumber;
+
+    const userId = parseInt(req.user.sub);
+    const user = prisma.user.findUnique({
+        where: { id: userId }
+    });
+    if (!user) {
+        return res.status(500).json({ 'error': 'UserId of self not found' })
+    }
+
+    filters = {}
+    if (type) {
+        filters.type = { type }
+    }
+    if (relatedId && type) {
+        filters.relatedTransactionId = { relatedId }
+    }
+    if (promotionId) {
+        filters.promotions = { 
+            some: {
+                id: promotionId
+            }
+        }
+    }
+    if (amount && operator) {
+        filters.amount = {
+            [operator]: amount
+        }
+    }
+
+    const results = prisma.user.findUnique({
+        where: { id: userId },
+        select: { ownedTransactions: { 
+            where: filters,
+            select: {
+                id: true,
+                type: true,
+                spent: true,
+                amount: true,
+                promotions: {
+                    select: { id: true }
+                }
+            },
+            skip,
+            take
+        } }
+    });
+    const formattedResults = results.ownedTransactions.map(transaction => ({
+        ...transaction,
+        promotionIds: transaction.promotions.map(p => p.id)
+    }));
+    const count = await prisma.promotion.count({ where: filters });
+    res.status(200).json({ count, formattedResults });
 });
 
 router.all('/', async (req, res) => {
