@@ -11,13 +11,7 @@ const router = express.Router();
 /* 
  notes: 
     need to figure out how to get promotions 
-    confirm functionality of clearance 
-    lastLogin check how it works
-
-    
-    line 180 promotions.js
-    reset expires at
-    
+    line 180 promotions.js 
 */
 
 const createUsersPayload = z.object({
@@ -85,6 +79,7 @@ const getUsersPayload = z.object({
 
 router.get("/", requireClearance(CLEARANCE.MANAGER), validatePayload(getUsersPayload), async(req, res)=> {
 
+
     //check which fields were included in request 
     const {name, role, verified, activated, page, limit} = req.body;
     const page_check = page|| 1;
@@ -114,14 +109,35 @@ router.get("/", requireClearance(CLEARANCE.MANAGER), validatePayload(getUsersPay
 
 });
 
-function getUsersValidPromotions(user){
+async function getUsersValidPromotions(user){
     promotions = [];
+
+    //get user promotions 
+    used_promotions = user.ownedTransactions;
+    used_prmotions_id = used_promotions.map(promotion => promotion.id);
+
+    //get all promotions that are not these ids 
+    promotions_found = await prisma.promotions.findMany({
+        where: {
+            id:{
+                notIn: used_prmotions_id
+            }
+        },
+        select: {
+            id:true, name:true, minSpending:true, rate:true, points:true
+        }
+    });
+
+    if(promotions_found){
+        return promotions_found;
+    }
+
     return promotions;
 }
 
 const multer = require("multer");
 const path = require("path");
-const upload = multer({ dest: path.join(__dirname, "uploads/avatars") });
+const upload = multer({ dest: path.join(__dirname, "../uploads/avatars") });
 const patchSelfPayload = z.object({
     name: z.string().min(1, "name too short").max(50, "name too long").optional(),
     email: z.string().email("invalid email format").refine(val => val.endsWith("@mail.utoronto.ca"), {
@@ -130,9 +146,7 @@ const patchSelfPayload = z.object({
     birthday: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "must be YYYY-MM-DD").optional()
 });
 
-router.patch("/me", upload.single("avatar"), requireClearance(CLEARANCE.REGULAR), validatePayload(patchSelfPayload), async(req, res)=> {
-    
-
+router.patch("/me", requireClearance(CLEARANCE.REGULAR), validatePayload(patchSelfPayload), upload.single("avatar"), async(req, res)=> {
     var data = {};
     const {name, email, birthday} = req.body;
 
@@ -152,12 +166,11 @@ router.patch("/me", upload.single("avatar"), requireClearance(CLEARANCE.REGULAR)
         data.email = email;
     }
     if(birthday) data.birthday = birthday;
-    console.log(req.file)
-    if(req.file) data.avatar = req.file.path;
+    if(req.file) data.avatarUrl = req.file.path;
 
     try{
         const user = await prisma.user.update({
-            where: {id: req.user.sub},
+            where: {id: req.auth.sub},
             data: data,
             select: {id: true, utorid:true, name:true, email:true, 
                     birthday:true, role:true, points:true,
@@ -169,6 +182,25 @@ router.patch("/me", upload.single("avatar"), requireClearance(CLEARANCE.REGULAR)
         res.status(500).json({error: `error patching self ${err.message}`});
     }
 
+});
+
+router.get("/me", requireClearance(CLEARANCE.REGULAR), async(req, res) =>{
+    try{
+        const user = await prisma.user.findUnique({
+            where: {id: req.auth.sub},
+            select: {id: true, utorid:true, name:true, email:true, 
+                    birthday:true, role:true, points:true,
+                createdAt: true, lastLogin: true, verified: true, avatarUrl: true}
+        });
+
+        promotions = await getUsersValidPromotions(user);
+        user.promotions = promotions
+        res.json(user);
+
+    }catch(err){
+        res.status(500).json({error: `error getting self ${err.message}`});
+    }
+      
 });
 
 router.get("/:userId", requireClearance(CLEARANCE.CASHIER), async(req, res)=>{
@@ -183,7 +215,7 @@ router.get("/:userId", requireClearance(CLEARANCE.CASHIER), async(req, res)=>{
     }
 
     
-    if(req.user.role === 'cashier'){
+    if(req.auth.role === 'cashier'){
         select.id = true;
         select.utorid = true;
         select.name = true;
@@ -213,7 +245,7 @@ router.get("/:userId", requireClearance(CLEARANCE.CASHIER), async(req, res)=>{
             return res.status(404).json({error: "user not found"});
         }
         //need to handle getting promotions waiting on understanding promotions functionality
-        user.promotions = getUsersValidPromotions(user);
+        user.promotions = await getUsersValidPromotions(user);
 
         return res.status(200).json(user);
 
@@ -268,7 +300,7 @@ router.patch("/:userId", requireClearance(CLEARANCE.MANAGER), validatePayload(pa
     }
     if(role){
         //for manager can only update roles of cashier or regular
-        if(req.user.role === 'manager' && (role !== 'cashier' || role !== 'regular') ){
+        if(req.auth.role === 'manager' && (role !== 'cashier' || role !== 'regular') ){
             return res.status(403).json({error: `manager not permitted to make role update for role - ${role}`});   
         }
         
@@ -290,66 +322,46 @@ router.patch("/:userId", requireClearance(CLEARANCE.MANAGER), validatePayload(pa
 });
 
 
-// router.get("/me", requireClearance(CLEARANCE.REGULAR), async(req, res) =>{
-//     try{
-//         const user = await prisma.findUnique({
-//             where: {id: req.user.sub},
-//             data: data,
-//             select: {id: true, utorid:true, name:true, email:true, 
-//                     birthday:true, role:true, points:true,
-//                 createdAt: true, lastLogin: true, verified: true, avatarUrl: true}
-//         });
+const updateOwnPasswordSchema = z.object({
+    old: z.string(),
+    new: z.string().min(8, "Password must be at least 8 characters long")
+  .max(20, "Password must be at most 20 characters long")
+  .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
+  .regex(/[a-z]/, "Password must contain at least one lowercase letter")
+  .regex(/[0-9]/, "Password must contain at least one number")
+  .regex(/[^A-Za-z0-9]/, "Password must contain at least one special character")
+});
 
-//         promotions = getUsersValidPromotions(user);
-//         user.promotions = promotions
-//         res.json(user);
+router.patch("/me/password", requireClearance(CLEARANCE.REGULAR), validatePayload(updateOwnPasswordSchema), async(req, res)=> {
+    const {old, new:newPassword} = req.body;
 
-//     }catch(err){
-//         res.status(500).json({error: `error patching self ${err.message}`});
-//     }
-      
-// });
+    try{
+        const user = await prisma.user.findUnique({
+            where: { id: req.auth.sub },
+        });
 
-// const updateOwnPasswordSchema = z.object({
-//     old: z.string(),
-//     new: z.string().min(8, "Password must be at least 8 characters long")
-//   .max(20, "Password must be at most 20 characters long")
-//   .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
-//   .regex(/[a-z]/, "Password must contain at least one lowercase letter")
-//   .regex(/[0-9]/, "Password must contain at least one number")
-//   .regex(/[^A-Za-z0-9]/, "Password must contain at least one special character")
-// });
+        if (!user) {
+            return res.status(404).json({ error: "User not found" });
+        }
 
-// router.patch("/me/password", reuquiredClearance(CLEARANCE.REGULAR), validatePayload(updateOwnPasswordSchema), async(req, res)=> {
-//     const {old, new:newPassword} = req.body;
+        const match = await bcrypt.compare(old, user.password);
+        if (!match) {
+            return res.status(403).json({ error: "Old password is incorrect" });
+        }
 
-//     try{
-//         const user = await prisma.user.findUnique({
-//             where: { id: req.user.sub },
-//         });
+        const hashed = await bcrypt.hash(newPassword, 10);
+        const updatedUser = await prisma.user.update({
+            where: { id: user.id },
+            data: { password: hashed },
+        });
 
-//         if (!user) {
-//             return res.status(404).json({ error: "User not found" });
-//         }
+        res.status(200).json({ message: "Password updated successfully" });
 
-//         const match = await bcrypt.compare(old, user.password);
-//         if (!match) {
-//             return res.status(403).json({ error: "Old password is incorrect" });
-//         }
-
-//         const hashed = await bcrypt.hash(newPassword, 10);
-//         const updatedUser = await prisma.user.update({
-//             where: { id: user.id },
-//             data: { password: hashed },
-//         });
-
-//         res.status(200).json({ message: "Password updated successfully" });
-
-//     }catch(err){
-//         res.status(500).json({error: `error updating password ${err.message}`});
-//     }
+    }catch(err){
+        res.status(500).json({error: `error updating password ${err.message}`});
+    }
     
 
-// });
+});
 
 module.exports = router;
