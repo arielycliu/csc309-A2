@@ -1,5 +1,5 @@
 const { CLEARANCE, requireClearance, roleRank } = require('./temp_middleware');
-const { PrismaClient} = require('@prisma/client');
+const { PrismaClient, PromotionType} = require('@prisma/client');
 
 const prisma = new PrismaClient();
 const express = require("express");
@@ -221,12 +221,13 @@ router.post('/', requireClearance(CLEARANCE.MANAGER), async (req, res) => {
     
     const startTimeDate = new Date(startTime);
     const endTimeDate = new Date(endTime);
+    const prismaType = type === 'one-time' ? PromotionType.onetime : PromotionType.automatic;
 
     const newPromotion = await prisma.promotion.create({
         data: {
             name,
             description,
-            type,
+            type: prismaType,
             startTime: startTimeDate,
             endTime: endTimeDate,
             minSpending: minSpending ?? null,
@@ -338,15 +339,16 @@ router.get('/:promotionId', requireClearance(CLEARANCE.REGULAR), async (req, res
     ];
     if (validateInputFields(validations, res)) return;
 
+    const now = new Date();
     let filters = {}
     if (isManagerOrHigher) {
-        filters.id = promotionId;
+        filters.id = parseInt(promotionId);
     } else if (isRegularOrHigher) {
         filters.startTime = { lte: now };
         filters.endTime = { gte: now };
-        filters.id = promotionId;
+        filters.id = parseInt(promotionId);
     }
-    const promotion = await prisma.promotion.findFirst({
+    const promotion = await prisma.promotion.findUnique({
         where: filters,
         select: {
             id: true,
@@ -364,6 +366,151 @@ router.get('/:promotionId', requireClearance(CLEARANCE.REGULAR), async (req, res
         return res.status(404).json({ 'error': 'Promotion not found' })
     }
     res.status(200).json(promotion);
+});
+
+// update an existing promotion
+router.patch('/:promotionId', requireClearance(CLEARANCE.MANAGER), async (req, res) => {
+    const promotionId = req.params["promotionId"];
+    const {
+        name,
+        description,
+        type,
+        startTime,
+        endTime,
+        minSpending,
+        rate,
+        points,
+    } = req.body;
+
+    if (validateInputFields([
+        () => validators.promotionId(promotionId, true),
+    ], res)) return;
+
+    const existingPromotion = await prisma.promotion.findUnique({
+        where: { id: parseInt(promotionId) },
+    });
+
+    if (!existingPromotion) {
+        return res.status(404).json({ 'error': 'Promotion not found' });
+    }
+
+    const now = new Date();
+    const originalStartTime = new Date(existingPromotion.startTime);
+    const originalEndTime = new Date(existingPromotion.endTime);
+    const hasStarted = originalStartTime < now;
+    const hasEnded = originalEndTime < now;
+
+    const fieldsToUpdate = {};
+
+    const validations = [];
+
+    if (name !== undefined) {
+        validations.push(() => validators.name(name, true));
+        if (hasStarted) {
+            return res.status(400).json({ 'error': 'Bad Request: cannot update name after the original start time has passed' });
+        }
+        fieldsToUpdate.name = name;
+    }
+
+    if (description !== undefined) {
+        validations.push(() => validators.description(description, true));
+        if (hasStarted) {
+            return res.status(400).json({ 'error': 'Bad Request: cannot update description after the original start time has passed' });
+        }
+        fieldsToUpdate.description = description;
+    }
+
+    if (type !== undefined) {
+        validations.push(() => validators.type(type, true));
+        if (hasStarted) {
+            return res.status(400).json({ 'error': 'Bad Request: cannot update type after the original start time has passed' });
+        }
+        const prismaType = type === 'one-time' ? PromotionType.onetime : PromotionType.automatic;
+        fieldsToUpdate.type = prismaType;
+    }
+
+    if (startTime !== undefined) {
+        validations.push(() => validators.startTime(startTime, true));
+        const startTimeDate = new Date(startTime);
+        if (startTimeDate < now) {
+            return res.status(400).json({ 'error': 'Bad Request: start time must not be in the past' });
+        }
+        if (hasStarted) {
+            return res.status(400).json({ 'error': 'Bad Request: cannot update startTime after the original start time has passed' });
+        }
+        fieldsToUpdate.startTime = startTimeDate;
+    }
+
+    if (endTime !== undefined) {
+        const effectiveStartTime = startTime !== undefined ? startTime : existingPromotion.startTime;
+        validations.push(() => validators.endTime(endTime, effectiveStartTime, true));
+        const endTimeDate = new Date(endTime);
+        if (endTimeDate < now) {
+            return res.status(400).json({ 'error': 'Bad Request: end time must not be in the past' });
+        }
+        if (hasEnded) {
+            return res.status(400).json({ 'error': 'Bad Request: cannot update endTime after the original end time has passed' });
+        }
+        fieldsToUpdate.endTime = endTimeDate;
+    }
+
+    if (minSpending !== undefined) {
+        validations.push(() => validators.minSpending(minSpending, true));
+        if (hasStarted) {
+            return res.status(400).json({ 'error': 'Bad Request: cannot update minSpending after the original start time has passed' });
+        }
+        fieldsToUpdate.minSpending = minSpending;
+    }
+
+    if (rate !== undefined) {
+        validations.push(() => validators.rate(rate, true));
+        if (hasStarted) {
+            return res.status(400).json({ 'error': 'Bad Request: cannot update rate after the original start time has passed' });
+        }
+        fieldsToUpdate.rate = rate;
+    }
+
+    if (points !== undefined) {
+        validations.push(() => validators.points(points, false));
+        if (hasStarted) {
+            return res.status(400).json({ 'error': 'Bad Request: cannot update points after the original start time has passed' });
+        }
+        fieldsToUpdate.points = points;
+    }
+
+    if (validateInputFields(validations, res)) return;
+
+    // no fields to update
+    if (Object.keys(fieldsToUpdate).length === 0) {
+        // might need to convert promotion type from prisma schema to api type
+        // const apiType = existingPromotion.type === PromotionType.onetime ? 'one-time' : 'automatic';
+        return res.status(200).json({
+            id: existingPromotion.id,
+            name: existingPromotion.name,
+            type: existingPromotion.type,
+        });
+    }
+
+    const updatedPromotion = await prisma.promotion.update({
+        where: { id: parseInt(promotionId) },
+        data: fieldsToUpdate,
+    });
+
+    // same thing with type here and in patch: change from prisma to api? one-time vs onetime
+    const response = {
+        id: updatedPromotion.id,
+        name: updatedPromotion.name,
+        type: updatedPromotion.type,
+    };
+
+    if (description !== undefined) response.description = updatedPromotion.description;
+    if (startTime !== undefined) response.startTime = updatedPromotion.startTime;
+    if (endTime !== undefined) response.endTime = updatedPromotion.endTime;
+    if (minSpending !== undefined) response.minSpending = updatedPromotion.minSpending;
+    if (rate !== undefined) response.rate = updatedPromotion.rate;
+    if (points !== undefined) response.points = updatedPromotion.points;
+
+    res.status(200).json(response);
 });
 
 router.all('/', async (req, res) => {
