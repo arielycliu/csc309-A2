@@ -59,6 +59,7 @@ function validateInputFields(validations, res) {
     return false;
 }
 
+// Create a new transfer transaction between the current logged-in user and userId
 router.post('/:userId/transactions', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
     const userId = req.params["userId"];
     const { type, amount, remark } = req.body;
@@ -79,7 +80,7 @@ router.post('/:userId/transactions', requireClearance(CLEARANCE.REGULAR), async 
             return res.status(500).json({ 'error': 'UserId of sender not found' })
         }
         if (sender.points < pointAmount) {
-            return res.status(400).json({ 'error': `Sender has ${sender.points} points, but wants to send ${pointAmount} points` })
+            return res.status(400).json({ 'error': `Sender has ${sender.points} points, but tried to send ${pointAmount} points` })
         }
         if (sender.verified === false) {
             return res.status(403).json({ 'error': 'Sender cannot send money, they need to be verified first' })
@@ -151,8 +152,53 @@ router.post('/:userId/transactions', requireClearance(CLEARANCE.REGULAR), async 
     res.status(201).json(result);
 });
 
+// create a new redemption transaction -> regular
 router.post('/me/transactions', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
+    const { type, amount, remark } = req.body;
+    let validators = [
+        () => validators.type(type, ['redemption'], true),
+        () => validators.amount(amount, true),
+        () => validators.remark(remark, false)
+    ]
+    if (validateInputFields(validators, res)) return;
 
+    const result = await prisma.$transaction(async (prisma) => {
+        const pointAmount = parseInt(amount);
+        const userId = parseInt(req.user.sub);
+        const user = prisma.user.findUnique({
+            where: { id: userId }
+        });
+        if (!user) {
+            return res.status(500).json({ 'error': 'UserId of self not found' })
+        }
+        if (user.points < pointAmount) {
+            return res.status(400).json({ 'error': `User has ${user.points} points, but tried to redeem ${pointAmount} points` })
+        }
+        if (user.verified === false) {
+            return res.status(403).json({ 'error': 'User cannot redeem points, they need to be verified first' })
+        }
+
+        const transaction = await prisma.transaction.create({
+            data: {
+                type: TransactionType.redemption,
+                amount: -(pointAmount),
+                remark: remark ?? null,
+                userId,
+                createdById: userId
+            }
+        });
+
+        return {
+            id: transaction.id,
+            sender: user.name,
+            type,
+            processedBy: transaction.processedById,
+            amount: pointAmount,
+            remark: remark ?? "",
+            createdBy: user.name
+        }
+    })
+    res.status(201).json(result);
 });
 
 router.get('/me/transactions', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
