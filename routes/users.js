@@ -119,7 +119,7 @@ const patchSelfPayload = z.object({
     birthday: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "must be YYYY-MM-DD").optional()
 });
 
-router.patch("/me", upload.single("avatar"), reuquiredClearance(CLEARANCE.REGULAR), validatePayload(patchSelfPayload), async(req, res)=> {
+router.patch("/me", upload.single("avatar"), requireClearance(CLEARANCE.REGULAR), validatePayload(patchSelfPayload), async(req, res)=> {
     
 
     var data = {};
@@ -160,7 +160,7 @@ router.patch("/me", upload.single("avatar"), reuquiredClearance(CLEARANCE.REGULA
 
 });
 
-router.get("/:userId", reuquiredClearance(CLEARANCE.CASHIER), async(req, res)=>{
+router.get("/:userId", requireClearance(CLEARANCE.CASHIER), async(req, res)=>{
     
 
     // build select depengind on users role
@@ -221,7 +221,7 @@ const patchUserSchema = z.object({
     role: z.enum(['regular', 'cashier', 'manager', 'superuser']).optional(),
 });
 
-router.patch("/:userId", reuquiredClearance(CLEARANCE.MANAGER), validatePayload(patchUserSchema), async(req, res)=>{
+router.patch("/:userId", requireClearance(CLEARANCE.MANAGER), validatePayload(patchUserSchema), async(req, res)=>{
     
     
     const {email, verified, suspicious, role} = req.body;
