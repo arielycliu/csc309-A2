@@ -168,6 +168,48 @@ function validateInputFields(validations, res) {
     return false;
 }
 
+// create a new promotion
+router.post('/', requireClearance(CLEARANCE.MANAGER), async (req, res) => {
+    const {
+        name,
+        description,
+        type,
+        startTime,
+        endTime,
+        minSpending,
+        rate,
+        points,
+    } = req.body;
+
+    if (validateInputFields([
+        () => validators.name(name),
+        () => validators.description(description),
+        () => validators.type(type),
+        () => validators.startTime(startTime),
+        () => validators.endTime(endTime, startTime),
+        () => validators.minSpending(minSpending),
+        () => validators.rate(rate),
+        () => validators.points(points),
+    ], res)) return;
+    
+    const startTimeDate = new Date(startTime);
+    const endTimeDate = new Date(endTime);
+
+    const newPromotion = await prisma.promotion.create({
+        data: {
+            name,
+            description,
+            type,
+            startTime: startTimeDate,
+            endTime: endTimeDate,
+            minSpending: minSpending ?? null,
+            rate: rate ?? null,
+            points: points ?? null,
+        },
+    });
+
+    res.status(201).json(newPromotion);
+});
 
 router.all('/', async (req, res) => {
     res.status(405).json({ 'error': 'Method Not Allowed' });
