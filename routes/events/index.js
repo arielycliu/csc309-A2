@@ -1,14 +1,11 @@
 const express = require("express");
-// const prisma = require('../../prisma'); // assume prisma.js
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
-// To be implemented
 const organizersRouter = require('./organizers');
 const guestsRouter = require('./guests');
 const eventTxRouter = require('./transactions');
 
-// assume auth middleware is ready
 const { CLEARANCE, requireClearance, roleRank } = require('../temp_middleware');
 
 
@@ -246,15 +243,16 @@ router.patch('/:eventId', requireClearance(CLEARANCE.REGULAR), async (req, res) 
 
     const ev = await prisma.event.findUnique({
       where: { id: eventId },
-      include: {
-        _count: {
-          select: {
-            guests: {
-              where: { confirmed: true },
-            },
-          },
-        },
+      select: {
+        id: true, name: true, description: true, location: true,
+        startTime: true, endTime: true,
+        capacity: true, pointsTotal: true, pointsRemain: true, pointsAwarded: true,
+        published: true,
       },
+    });
+
+    const confirmedCount = await prisma.eventGuest.count({
+      where: { eventId, confirmed: true },
     });
 
     if (!ev) return res.status(404).json({ error: 'Event not found' });
@@ -267,7 +265,7 @@ router.patch('/:eventId', requireClearance(CLEARANCE.REGULAR), async (req, res) 
     if (!isMgr && !isOrg) return res.status(403).json({ error: 'Forbidden' });
 
     // Organizer can update: name, description, location, startTime, endTime, capacity
-    // Manager can also set: points (reallocate, with constraints), published=true
+    // Manager can also set: points, published=true
     const allowedForOrganizer = new Set(['name', 'description', 'location', 'startTime', 'endTime', 'capacity']);
     const allowedForManager = new Set([...allowedForOrganizer, 'points', 'published']);
 
@@ -318,7 +316,7 @@ router.patch('/:eventId', requireClearance(CLEARANCE.REGULAR), async (req, res) 
       if (payload.capacity !== null) {
         const cap = Number(payload.capacity);
         if (!Number.isInteger(cap) || cap <= 0) return res.status(400).json({ error: 'updated capacity must be positive integer' });
-        if (ev._count.guests > cap) return res.status(400).json({ error: 'New capacity is less than confirmed guests' });
+        if (confirmedCount > cap) return res.status(400).json({ error: 'New capacity is less than confirmed guests (current implementation assumes all guests are confirmed)' });
         updates.capacity = cap;
       } else {
         return res.status(400).json({ error: 'updated capacity cannot be null' });
@@ -353,7 +351,7 @@ router.patch('/:eventId', requireClearance(CLEARANCE.REGULAR), async (req, res) 
   }
 });
 
-// sub-routers to be implemented
+// sub-routers
 router.use('/:eventId/organizers', organizersRouter);
 router.use('/:eventId/guests', guestsRouter);
 router.use('/:eventId/transactions', eventTxRouter);
