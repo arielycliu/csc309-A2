@@ -30,16 +30,16 @@ enum PromotionType {
 model User {
   id          Int       @id @default(autoincrement())
   utorid      String    @unique                      // 7–8 chars, alphanumeric (validate in code)
-  name        String
+  name        String?
   email       String    @unique                      // UofT email (validate in code)
   password    String?                                 // hashed (password not immediately set)
-  birthday    DateTime?
+  birthday    String?
   role        RoleType  @default(regular)
   verified    Boolean   @default(false)
   suspicious  Boolean   @default(false)              // cashier may be flagged
   points      Int       @default(0)                  // current points balance
   createdAt   DateTime  @default(now())
-  lastLogin   DateTime?
+  lastLogin   DateTime  @default(now())
   avatarUrl   String?
 
   // Activation/reset token (used for activation + password reset flows)
