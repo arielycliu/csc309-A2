@@ -23,7 +23,6 @@ const app = express();
 
 app.use(express.json());
 
-// ADD YOUR WORK HERE
 const authRoutes = require("./routes/auth")
 
 // Protected routers
@@ -38,8 +37,13 @@ app.use("/promotions", promotionRoutes)
 app.use("/transactions", transactionRoutes)
 app.use("/users", userRoutes)
 
-// could not figure out a clean way to cover 405 and 404 cases
-// might need to check them manually each time
+app.use((err, req, res, next) => {
+    // catch for express-jwt UnauthorizedError
+    if (err.name === 'UnauthorizedError') {
+        return res.status(401).json({ error: 'Unauthorized: invalid or missing token' });
+    }
+});
+
 
 const server = app.listen(port, () => {
     console.log(`Server running on port ${port}`);
