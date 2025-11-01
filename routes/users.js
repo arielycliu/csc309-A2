@@ -1,4 +1,4 @@
-const { CLEARANCE, requireClearance, validatePayload } = require('./temp_middleware');
+const { CLEARANCE, requireClearance, validatePayload } = require('./auth_middleware');
 const { v4: uuidv4 } = require('uuid');
 const { PrismaClient} = require('@prisma/client');
 
@@ -14,7 +14,7 @@ const createUsersPayload = {
     email: {type: 'string', required: true}
 }
 
-router.post("/users", requireClearance(CLEARANCE.CASHIER), validatePayload(createUsersPayload), async (req, res) => {
+router.post("/users", requireClearance(CLEARANCE.CASHIER), async (req, res) => {
    //user authenticated as cashier or higher, required field checked 
    const {utorid, name, email} = req.body;
 
@@ -57,7 +57,7 @@ const getUsersPayload = {
 
 }
 
-router.get("/users", requireClearance(CLEARANCE.MANAGER), validatePayload(getUsersPayload), async(req, res)=> {
+router.get("/users", requireClearance(CLEARANCE.MANAGER), async(req, res)=> {
 
     //check which fields were included in request 
     const {name, role, verified, activated, page, limit} = req.body;
@@ -90,7 +90,7 @@ router.get("/users", requireClearance(CLEARANCE.MANAGER), validatePayload(getUse
 
 });
 
-router.get("/users/:userId", reuquiredClearance(CLEARANCE.CASHIER), async(req, res)=>{
+router.get("/users/:userId", requireClearance(CLEARANCE.CASHIER), async(req, res)=>{
 
     // build select depengind on users role
     select = {}
@@ -104,5 +104,8 @@ router.get("/users/:userId", reuquiredClearance(CLEARANCE.CASHIER), async(req, r
 });
 
 
+// Ariel's subrouter for users/transactions
+const userTransactionsRouter = require('./users_transactions');
+router.use('/', userTransactionsRouter);
 
 module.exports = router;
