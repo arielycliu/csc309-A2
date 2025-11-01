@@ -12,10 +12,11 @@ const router = express.Router();
  notes: 
     need to figure out how to get promotions 
     confirm functionality of clearance 
-    lastLogin check how it works\
+    lastLogin check how it works
 
-    users endpoint remove 
-    line 180 promotions.js 
+    
+    line 180 promotions.js
+    reset expires at
     
 */
 
