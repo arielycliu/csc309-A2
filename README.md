@@ -1,6 +1,7 @@
 # csc309-A2
 - npm i
 - node --watch index.js 3000
+- npx prisma migrate reset --force -> reset data
 - npx prisma studio -> view data
 - npx prisma generate -> generate schema
 - npx prisma db push -> no migration history
@@ -21,7 +22,7 @@ Auth
 3. Save token and add to header
     Key: Authorization
     Value: Bearer `token`
-4. req.user has fields
+4. req.auth has fields
 ```
 sub: user id
 role: user role

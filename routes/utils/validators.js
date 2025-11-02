@@ -86,7 +86,7 @@ function validateNumber(value, fieldName, options = {}) {
             return `${fieldName} must be a valid integer`;
         }
     } else {
-        if (typeof value !== 'number') {
+        if (isNaN(value)) {
             return `${fieldName} must be a valid number`;
         }
     }
@@ -119,4 +119,15 @@ function validateBoolean(value, fieldName, options = {}) {
     return null;
 }
 
-module.exports = { validateString, validateEnum, validateDate, validateNumber, validateBoolean };
+function validateInputFields(validations, res) {
+    for (let validationFunction of validations) {
+        let error = validationFunction();
+        if (error) {
+            res.status(400).json({ 'error': `Bad Request: ${error}` });
+            return true;
+        }
+    }
+    return false;
+}
+
+module.exports = { validateString, validateEnum, validateDate, validateNumber, validateBoolean, validateInputFields };

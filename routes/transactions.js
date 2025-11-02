@@ -724,4 +724,9 @@ router.patch(
 	}
 );
 
+// Ariel's subrouter for transactions/processed
+// keep in separate file for now to avoid complicated merge conflicts but can be put in transactions later
+const transactionsProcessedRouter = require('./transactions_processed');
+router.use('/', transactionsProcessedRouter);
+
 module.exports = router;
