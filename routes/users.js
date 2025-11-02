@@ -72,14 +72,15 @@ router.post("/", requireClearance(CLEARANCE.CASHIER), validatePayload(createUser
 const getUsersPayload = z.object({
     name: z.string().optional().nullable(),
     role: z.enum(['regular', 'cashier', 'manager', 'superuser']).optional().nullable(),
-    verified: z.coerce.boolean().optional().nullable(),
-    activated: z.coerce.boolean().optional().nullable(),
+    verified: z.string().optional().transform(val => val === undefined ? undefined : val === "true"),
+    activated: z.string().optional().transform(val => val === undefined ? undefined : val === "true"),
     page: z.coerce.number().int().positive().optional().nullable(),
     limit: z.coerce.number().int().positive().optional().nullable()
 
 });
 
 router.get("/", requireClearance(CLEARANCE.MANAGER), validatePayload(getUsersPayload), async(req, res)=> {
+    //console.log(req.query)
     // console.log({
     // body: req.body,
     // query: req.query,
@@ -99,8 +100,15 @@ router.get("/", requireClearance(CLEARANCE.MANAGER), validatePayload(getUsersPay
 
     if (name) where.name = name;
     if (role) where.role = role;
-    if (verified) where.verified = verified;
-    if (activated) where.lastLogin = { not: null };
+    
+    if (verified !== undefined && verified !== null) where.verified = verified;
+    if (activated !== undefined && activated !== null) {
+        if (activated) {
+            where.lastLogin = { not: {} };
+        } else {
+            where.lastLogin = null; 
+        }
+    }
 
     try{
         const count = await prisma.user.count({ where: where });
