@@ -1,4 +1,4 @@
-const { CLEARANCE, requireClearance, validatePayload } = require('./auth_middleware');
+const { CLEARANCE, requireClearance, validatePayload, roleRank, requireClearanceUpdateRole} = require('./auth_middleware');
 const { v4: uuidv4 } = require('uuid');
 const {z} = require("zod");
 const bcrypt = require('bcrypt');
@@ -15,6 +15,8 @@ const router = express.Router();
     line 180 promotions.js 
 */
 
+
+
 const createUsersPayload = z.object({
     utorid: z.string().min(7, "must be atleast 7 characters long").max(8, "utorid too long"),
     name: z.string().min(1, "too short").max(50, "too long"),
@@ -23,7 +25,7 @@ const createUsersPayload = z.object({
     }),
 });
 
-router.post("/", requireClearance(CLEARANCE.CASHIER), validatePayload(createUsersPayload), async (req, res) => {
+router.post("/", requireClearanceUpdateRole(CLEARANCE.CASHIER), validatePayload(createUsersPayload), async (req, res) => {
     
    //user authenticated as cashier or higher, required field checked 
    const {utorid, name, email} = req.body;
@@ -79,7 +81,7 @@ const getUsersPayload = z.object({
 
 });
 
-router.get("/", requireClearance(CLEARANCE.MANAGER), validatePayload(getUsersPayload), async(req, res)=> {
+router.get("/", requireClearanceUpdateRole(CLEARANCE.MANAGER), validatePayload(getUsersPayload), async(req, res)=> {
     //console.log(req.query)
     // console.log({
     // body: req.body,
@@ -187,7 +189,7 @@ const patchSelfPayload = z.object({
     
 });
 
-router.patch("/me", requireClearance(CLEARANCE.REGULAR), upload.single("avatar"), validatePayload(patchSelfPayload), async(req, res)=> {
+router.patch("/me", requireClearanceUpdateRole(CLEARANCE.REGULAR), upload.single("avatar"), validatePayload(patchSelfPayload), async(req, res)=> {
     var data = {};
     const {name, email, birthday} = req.body;
 
@@ -232,7 +234,7 @@ router.patch("/me", requireClearance(CLEARANCE.REGULAR), upload.single("avatar")
 
 });
 
-router.get("/me", requireClearance(CLEARANCE.REGULAR), async(req, res) =>{
+router.get("/me", requireClearanceUpdateRole(CLEARANCE.REGULAR), async(req, res) =>{
     // console.log({
     // body: req.body,
     // query: req.query,
@@ -261,7 +263,7 @@ router.get("/me", requireClearance(CLEARANCE.REGULAR), async(req, res) =>{
       
 });
 
-router.get("/:userId", requireClearance(CLEARANCE.CASHIER), async(req, res)=>{
+router.get("/:userId", requireClearanceUpdateRole(CLEARANCE.CASHIER), async(req, res)=>{
     //console.log("get user", req.body);
 
     // build select depengind on users role
@@ -322,7 +324,7 @@ const patchUserSchema = z.object({
     role: z.enum(['regular', 'cashier', 'manager', 'superuser']).optional().nullable(),
 });
 
-router.patch("/:userId", requireClearance(CLEARANCE.MANAGER), validatePayload(patchUserSchema), async(req, res)=>{
+router.patch("/:userId", requireClearanceUpdateRole(CLEARANCE.MANAGER), validatePayload(patchUserSchema), async(req, res)=>{
     // console.log({
     // body: req.body,
     // query: req.query,
@@ -428,7 +430,7 @@ const updateOwnPasswordSchema = z.object({
   .regex(/[^A-Za-z0-9]/, "Password must contain at least one special character")
 });
 
-router.patch("/me/password", requireClearance(CLEARANCE.REGULAR), validatePayload(updateOwnPasswordSchema), async(req, res)=> {
+router.patch("/me/password", requireClearanceUpdateRole(CLEARANCE.REGULAR), validatePayload(updateOwnPasswordSchema), async(req, res)=> {
     //console.log("PATCH /me/password body:", req.body);
     
     const {old, new:newPassword} = req.body;
