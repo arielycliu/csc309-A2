@@ -1,5 +1,7 @@
 const { expressjwt: jwt } = require('express-jwt');
 require('dotenv').config();
+const { PrismaClient} = require('@prisma/client');
+const prisma = new PrismaClient();
 
 const CLEARANCE = {
   ANY: 0,
@@ -56,7 +58,38 @@ function validatePayload(schema) {
   };
 }
 
-module.exports = { CLEARANCE, requireClearance, requireAuth, roleRank, validatePayload};
+function requireClearanceUpdateRole(minClearance) {
+  if (minClearance === CLEARANCE.ANY) return (req, _res, next) => next();
+  return [
+    requireAuth,
+    async (req, res, next) => {
+
+      if (!req.auth?.sub) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+      const user = await prisma.user.findUnique({
+        where: { id: req.auth.sub },
+        select: { role: true },
+      });
+      
+      if (!user)
+        return res.status(403).json({ error: 'forbidden' });
+
+      const userRank = roleRank(user.role);
+      if (userRank < minClearance)
+        return res.status(403).json({ error: 'Forbidden' });
+
+
+      // update the role in case it changed
+      req.auth.role = user.role;
+
+      next();
+    },
+  ];
+}
+
+
+module.exports = { CLEARANCE, requireClearance, requireAuth, roleRank, validatePayload, requireClearanceUpdateRole};
 
 // temp_middleware.js
 // require('dotenv').config();
