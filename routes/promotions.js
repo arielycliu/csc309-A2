@@ -355,12 +355,11 @@ router.patch('/:promotionId', requireClearance(CLEARANCE.MANAGER), async (req, r
 
     // no fields to update
     if (Object.keys(fieldsToUpdate).length === 0) {
-        // might need to convert promotion type from prisma schema to api type
-        // const apiType = existingPromotion.type === PromotionType.onetime ? 'one-time' : 'automatic';
+        let existingPromotionType = existingPromotion.type === PromotionType.onetime ? 'one-time' : 'automatic';
         return res.status(200).json({
             id: existingPromotion.id,
             name: existingPromotion.name,
-            type: existingPromotion.type,
+            type: existingPromotionType,
         });
     }
 
@@ -369,11 +368,11 @@ router.patch('/:promotionId', requireClearance(CLEARANCE.MANAGER), async (req, r
         data: fieldsToUpdate,
     });
 
-    // same thing with type here and in patch: change from prisma to api? one-time vs onetime
+    let updatedPromotionType = updatedPromotion.type === PromotionType.onetime ? 'one-time' : 'automatic';
     const response = {
         id: updatedPromotion.id,
         name: updatedPromotion.name,
-        type: updatedPromotion.type,
+        type: updatedPromotionType,
     };
 
     if (description !== undefined) response.description = updatedPromotion.description;
