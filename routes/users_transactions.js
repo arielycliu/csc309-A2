@@ -1,5 +1,5 @@
-const { CLEARANCE, requireClearance, roleRank } = require('./auth_middleware');
-const { validateString, validateEnum, validateDate, validateNumber, validateBoolean } = require('./utils/validators');
+const { CLEARANCE, requireClearance } = require('./auth_middleware');
+const { validateString, validateEnum, validateNumber, validateInputFields } = require('./utils/validators');
 const { PrismaClient, TransactionType } = require('@prisma/client');
 
 const prisma = new PrismaClient();
@@ -51,17 +51,6 @@ const validators = {
         return validateNumber(limit, 'limit', { required });
     },
 };
-
-function validateInputFields(validations, res) {
-    for (let validationFunction of validations) {
-        let error = validationFunction();
-        if (error) {
-            res.status(400).json({ 'error': `Bad Request: ${error}` });
-            return true;
-        }
-    }
-    return false;
-}
 
 // create a new redemption transaction -> regular
 router.post('/me/transactions', requireClearance(CLEARANCE.REGULAR), async (req, res) => {

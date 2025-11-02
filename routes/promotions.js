@@ -1,5 +1,5 @@
 const { CLEARANCE, requireClearance, roleRank } = require('./auth_middleware');
-const { validateString, validateEnum, validateDate, validateNumber, validateBoolean } = require('./utils/validators');
+const { validateString, validateEnum, validateDate, validateNumber, validateBoolean, validateInputFields } = require('./utils/validators');
 const { PrismaClient, PromotionType } = require('@prisma/client');
 
 const prisma = new PrismaClient();
@@ -63,17 +63,6 @@ const validators = {
         return validateNumber(promotionId, 'promotionId', { required });
     },
 };
-
-function validateInputFields(validations, res) {
-    for (let validationFunction of validations) {
-        let error = validationFunction();
-        if (error) {
-            res.status(400).json({ 'error': `Bad Request: ${error}` });
-            return true;
-        }
-    }
-    return false;
-}
 
 // create a new promotion
 router.post('/', requireClearance(CLEARANCE.MANAGER), async (req, res) => {
