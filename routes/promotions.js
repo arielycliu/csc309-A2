@@ -158,7 +158,6 @@ router.get('/', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
         }
     }
     if (isRegular) {
-        console.log("regular user");
         const userId = req.auth?.sub;
 
         // regular user: show only active promotions

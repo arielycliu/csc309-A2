@@ -207,7 +207,6 @@ router.post('/:userId/transactions', requireClearance(CLEARANCE.REGULAR), async 
             const senderPoints = sender.points;
             return res.status(400).json({ 'error': `Sender has ${senderPoints} points, but tried to send ${pointAmount} points` })
         }
-        console.log("sdfsd");
         if (sender.verified === false) {
             return res.status(403).json({ 'error': 'Sender cannot send money, they need to be verified first' })
         }
