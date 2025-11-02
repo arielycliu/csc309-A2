@@ -30,7 +30,9 @@ function requireClearance(minClearance) {
     requireAuth,
     (req, res, next) => {
       const rank = roleRank(req.auth?.role);
-      if (rank < minClearance) return res.status(403).json({ error: 'Forbidden' });
+      if (rank < minClearance){
+        return res.status(403).json({ error: 'Forbidden' })
+      };
       next();
     },
   ];
@@ -39,12 +41,17 @@ function requireClearance(minClearance) {
 function validatePayload(schema) {
   return (req, res, next) => {
     try {
-      req.body = schema.parse(req.body);
+      if (req.method === "GET") {
+        req.query = schema.parse(req.query);
+      } else {
+        req.body = schema.parse(req.body);
+      }
       next();
     } catch (err) {
       // ZodError
+      
       const errors = err.errors.map(e => `${e.path.join('.')} - ${e.message}`);
-      res.status(400).json({ error: errors });
+      return res.status(400).json({ error: errors });
     }
   };
 }
