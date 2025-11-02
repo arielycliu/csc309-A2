@@ -86,7 +86,7 @@ function validateNumber(value, fieldName, options = {}) {
             return `${fieldName} must be a valid integer`;
         }
     } else {
-        if (typeof value !== 'number') {
+        if (isNaN(value)) {
             return `${fieldName} must be a valid number`;
         }
     }

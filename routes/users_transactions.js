@@ -63,48 +63,181 @@ function validateInputFields(validations, res) {
     return false;
 }
 
+// create a new redemption transaction -> regular
+router.post('/me/transactions', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
+    const { type, amount, remark } = req.body;
+    let validations = [
+        () => validators.type(type, ['redemption'], true),
+        () => validators.amount(amount, true),
+        () => validators.remark(remark, false)
+    ]
+    if (validateInputFields(validations, res)) return;
+
+    await prisma.$transaction(async (prisma) => {
+        const pointAmount = parseInt(amount);
+        const userId = parseInt(req.auth.sub);
+        const user = prisma.user.findUnique({
+            where: { id: userId }
+        });
+        if (!user) {
+            return res.status(500).json({ 'error': 'UserId of self not found' })
+        }
+        if (user.points < pointAmount) {
+            return res.status(400).json({ 'error': `User has ${user.points} points, but tried to redeem ${pointAmount} points` })
+        }
+        if (user.verified === false) {
+            return res.status(403).json({ 'error': 'User cannot redeem points, they need to be verified first' })
+        }
+
+        const transaction = await prisma.transaction.create({
+            data: {
+                type: TransactionType.redemption,
+                amount: -(pointAmount),
+                remark: remark ?? null,
+                userId,
+                createdById: userId
+            }
+        });
+
+        const result = {
+            id: transaction.id,
+            sender: user.name,
+            type,
+            processedBy: transaction.processedById,
+            amount: pointAmount,
+            remark: remark ?? "",
+            createdBy: user.name
+        }
+        res.status(201).json(result);
+    })
+});
+
+// Retrieve a list of transactions owned by the currently logged in user
+router.get('/me/transactions', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
+    const {
+        type,
+        relatedId,
+        promotionId,
+        operator,
+        amount,
+        page,
+        limit
+    } = req.body;
+
+    const transactionTypes = ['purchase', 'redemption', 'adjustment', 'event', 'transfer'];
+    let validations = [
+        () => validators.type(type, transactionTypes, false),
+        () => validators.relatedId(relatedId, type, transactionTypes, false),
+        () => validators.promotionId(promotionId, false),
+        () => validators.operator(operator, ['gte', 'lte'], false),
+        () => validators.amountWithOperator(amount, operator, ['gte', 'lte'], false),
+        () => validators.page(page, false),
+        () => validators.limit(limit, false)
+    ]
+    if (validateInputFields(validations, res)) return;
+
+    const pageNumber = parseInt(page) || 1;
+    const limitNumber = parseInt(limit) || 10;
+    const skip = (pageNumber - 1) * limitNumber;
+    const take = limitNumber;
+
+    const userId = parseInt(req.auth.sub);
+    const user = prisma.user.findUnique({
+        where: { id: userId }
+    });
+    if (!user) {
+        return res.status(500).json({ 'error': 'UserId of self not found' })
+    }
+
+    filters = { relatedUserId: userId }
+    if (type) {
+        filters.type = { type }
+    }
+    if (relatedId && type) {
+        filters.relatedTransactionId = { relatedId }
+    }
+    if (promotionId) {
+        filters.promotions = { 
+            some: {
+                id: promotionId
+            }
+        }
+    }
+    if (amount && operator) {
+        filters.amount = {
+            [operator]: amount
+        }
+    }
+
+    const transactions = await prisma.transaction.findMany({
+        where: filters,
+        select: { 
+            id: true,
+            type: true,
+            spent: true,
+            amount: true,
+            promotions: { select: { promotionId: true }},
+            remark: true
+        }
+    });
+    const results = transactions.map(t => ({
+        id: t.id,
+        type: t.type,
+        spent: t.spent,
+        amount: t.amount,
+        promotionIds: t.promotions.map(p => p.promotionId), // flatten
+        remark: t.remark
+    }));
+    const count = await prisma.transaction.count({ where: filters });
+    res.status(200).json({ count, results });
+});
+
 // Create a new transfer transaction between the current logged-in user and userId
 router.post('/:userId/transactions', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
     const userId = req.params["userId"];
     const { type, amount, remark } = req.body;
-    let validators = [
+    let validations = [
         () => validators.userId(userId, true),
         () => validators.type(type, ['transfer'], true),
         () => validators.amount(amount, true),
         () => validators.remark(remark, false)
     ]
-    if (validateInputFields(validators, res)) return;
+    if (validateInputFields(validations, res)) return;
+    const receiverId = parseInt(userId);
+    const senderId = parseInt(req.auth.sub);
 
-    const result = await prisma.$transaction(async (prisma) => {
+    await prisma.$transaction(async (prisma) => {
         const pointAmount = parseInt(amount);
-        const sender = prisma.user.findUnique({
-            where: { id: parseInt(req.user.sub) }
+        const sender = await prisma.user.findUnique({
+            where: { id: senderId }
         });
         if (!sender) {
             return res.status(500).json({ 'error': 'UserId of sender not found' })
         }
         if (sender.points < pointAmount) {
-            return res.status(400).json({ 'error': `Sender has ${sender.points} points, but tried to send ${pointAmount} points` })
+            const senderPoints = sender.points;
+            return res.status(400).json({ 'error': `Sender has ${senderPoints} points, but tried to send ${pointAmount} points` })
         }
+        console.log("sdfsd");
         if (sender.verified === false) {
             return res.status(403).json({ 'error': 'Sender cannot send money, they need to be verified first' })
         }
 
         const receiver = prisma.user.findUnique({
-            where: { id: parseInt(receiver) }
+            where: { id: receiverId }
         });
         if (!receiver) {
             return res.status(404).json({ 'error': 'Userid of receiver not found' })
         }
 
         await prisma.user.update({
-            where: { id: sender.id },
+            where: { id: senderId },
             data: {
                 points: { decrement: pointAmount }
             }
         });
         await prisma.user.update({
-            where: { id: receiver.id },
+            where: { id: receiverId },
             data: {
                 points: { increment: pointAmount }
             }
@@ -143,7 +276,7 @@ router.post('/:userId/transactions', requireClearance(CLEARANCE.REGULAR), async 
             }
         });
 
-        return {
+        const result = {
             id: senderTransaction.id,
             sender: sender.name,
             recipient: receiver.name,
@@ -152,139 +285,8 @@ router.post('/:userId/transactions', requireClearance(CLEARANCE.REGULAR), async 
             remark,
             createdBy: sender.name
         }
+        res.status(201).json(result);
     })
-    res.status(201).json(result);
-});
-
-// create a new redemption transaction -> regular
-router.post('/me/transactions', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
-    const { type, amount, remark } = req.body;
-    let validators = [
-        () => validators.type(type, ['redemption'], true),
-        () => validators.amount(amount, true),
-        () => validators.remark(remark, false)
-    ]
-    if (validateInputFields(validators, res)) return;
-
-    const result = await prisma.$transaction(async (prisma) => {
-        const pointAmount = parseInt(amount);
-        const userId = parseInt(req.user.sub);
-        const user = prisma.user.findUnique({
-            where: { id: userId }
-        });
-        if (!user) {
-            return res.status(500).json({ 'error': 'UserId of self not found' })
-        }
-        if (user.points < pointAmount) {
-            return res.status(400).json({ 'error': `User has ${user.points} points, but tried to redeem ${pointAmount} points` })
-        }
-        if (user.verified === false) {
-            return res.status(403).json({ 'error': 'User cannot redeem points, they need to be verified first' })
-        }
-
-        const transaction = await prisma.transaction.create({
-            data: {
-                type: TransactionType.redemption,
-                amount: -(pointAmount),
-                remark: remark ?? null,
-                userId,
-                createdById: userId
-            }
-        });
-
-        return {
-            id: transaction.id,
-            sender: user.name,
-            type,
-            processedBy: transaction.processedById,
-            amount: pointAmount,
-            remark: remark ?? "",
-            createdBy: user.name
-        }
-    })
-    res.status(201).json(result);
-});
-
-// Retrieve a list of transactions owned by the currently logged in user
-router.get('/me/transactions', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
-    const {
-        type,
-        relatedId,
-        promotionId,
-        operator,
-        amount,
-        page,
-        limit
-    } = req.body;
-
-    const transactionTypes = ['purchase', 'redemption', 'adjustment', 'event', 'transfer'];
-    let validators = [
-        () => validators.type(type, transactionTypes, false),
-        () => validators.relatedId(relatedId, type, transactionTypes, false),
-        () => validators.promotionId(promotionId, false),
-        () => validators.operator(operator, ['gte', 'lte'], false),
-        () => validators.amountWithOperator(amount, operator, ['gte', 'lte'], false),
-        () => validators.page(page, false),
-        () => validators.limit(limit, false)
-    ]
-    if (validateInputFields(validators, res)) return;
-
-    const pageNumber = parseInt(page) || 1;
-    const limitNumber = parseInt(limit) || 10;
-    const skip = (pageNumber - 1) * limitNumber;
-    const take = limitNumber;
-
-    const userId = parseInt(req.user.sub);
-    const user = prisma.user.findUnique({
-        where: { id: userId }
-    });
-    if (!user) {
-        return res.status(500).json({ 'error': 'UserId of self not found' })
-    }
-
-    filters = {}
-    if (type) {
-        filters.type = { type }
-    }
-    if (relatedId && type) {
-        filters.relatedTransactionId = { relatedId }
-    }
-    if (promotionId) {
-        filters.promotions = { 
-            some: {
-                id: promotionId
-            }
-        }
-    }
-    if (amount && operator) {
-        filters.amount = {
-            [operator]: amount
-        }
-    }
-
-    const results = prisma.user.findUnique({
-        where: { id: userId },
-        select: { ownedTransactions: { 
-            where: filters,
-            select: {
-                id: true,
-                type: true,
-                spent: true,
-                amount: true,
-                promotions: {
-                    select: { id: true }
-                }
-            },
-            skip,
-            take
-        } }
-    });
-    const formattedResults = results.ownedTransactions.map(transaction => ({
-        ...transaction,
-        promotionIds: transaction.promotions.map(p => p.id)
-    }));
-    const count = await prisma.promotion.count({ where: filters });
-    res.status(200).json({ count, formattedResults });
 });
 
 router.all('/', async (req, res) => {
