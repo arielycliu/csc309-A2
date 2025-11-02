@@ -3,3 +3,5 @@ node_modules
 .env
 prisma/dev*
 package-lock.json
+uploads/*
+requests.txt
