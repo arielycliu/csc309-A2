@@ -1,5 +1,5 @@
 const { CLEARANCE, requireClearance, roleRank } = require('./auth_middleware');
-const { validateString, validateEnum, validateDate, validateNumber, validateBoolean } = require('./utils/validators');
+const { validateString, validateEnum, validateDate, validateNumber, validateBoolean, validateInputFields } = require('./utils/validators');
 const { PrismaClient, PromotionType } = require('@prisma/client');
 
 const prisma = new PrismaClient();
@@ -63,17 +63,6 @@ const validators = {
         return validateNumber(promotionId, 'promotionId', { required });
     },
 };
-
-function validateInputFields(validations, res) {
-    for (let validationFunction of validations) {
-        let error = validationFunction();
-        if (error) {
-            res.status(400).json({ 'error': `Bad Request: ${error}` });
-            return true;
-        }
-    }
-    return false;
-}
 
 // create a new promotion
 router.post('/', requireClearance(CLEARANCE.MANAGER), async (req, res) => {
@@ -177,8 +166,12 @@ router.get('/', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
         filters.endTime = { gte: now };
 
         // removed used promotions
+        const transactionIds = await prisma.user.findUnique({
+            where: { userId },
+            select: { ownedTransactions: { select: { id: true } } }
+        });
         const usedPromotionIds = await prisma.transactionPromotion.findMany({
-            where: { transaction: { userId } },
+            where: { transaction: { in: transactionIds } },
             select: { promotionId: true }
         });
         if (usedPromotionIds.length > 0) {
@@ -362,12 +355,11 @@ router.patch('/:promotionId', requireClearance(CLEARANCE.MANAGER), async (req, r
 
     // no fields to update
     if (Object.keys(fieldsToUpdate).length === 0) {
-        // might need to convert promotion type from prisma schema to api type
-        // const apiType = existingPromotion.type === PromotionType.onetime ? 'one-time' : 'automatic';
+        let existingPromotionType = existingPromotion.type === PromotionType.onetime ? 'one-time' : 'automatic';
         return res.status(200).json({
             id: existingPromotion.id,
             name: existingPromotion.name,
-            type: existingPromotion.type,
+            type: existingPromotionType,
         });
     }
 
@@ -376,11 +368,11 @@ router.patch('/:promotionId', requireClearance(CLEARANCE.MANAGER), async (req, r
         data: fieldsToUpdate,
     });
 
-    // same thing with type here and in patch: change from prisma to api? one-time vs onetime
+    let updatedPromotionType = updatedPromotion.type === PromotionType.onetime ? 'one-time' : 'automatic';
     const response = {
         id: updatedPromotion.id,
         name: updatedPromotion.name,
-        type: updatedPromotion.type,
+        type: updatedPromotionType,
     };
 
     if (description !== undefined) response.description = updatedPromotion.description;
