@@ -364,4 +364,8 @@ router.patch("/me/password", requireClearance(CLEARANCE.REGULAR), validatePayloa
 
 });
 
+// Ariel's subrouter for /users/transactions
+const userTransactionsRouter = require('./users_transactions');
+router.use('/', userTransactionsRouter);
+
 module.exports = router;
