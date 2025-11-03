@@ -45,7 +45,7 @@ router.post('/', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
     }
 
     const created = await prisma.eventGuest.create({
-      data: { eventId, userId: user.id, confirmed: false },
+      data: { eventId, userId: user.id, confirmed: true },
       include: { user: { select: { id: true, utorid: true, name: true } } },
     });
 
@@ -107,7 +107,7 @@ router.post('/me', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
     if (exists) return res.status(400).json({ error: 'Already on guest list' });
 
     const me = await prisma.user.findUnique({ where: { id: req.auth.sub }, select: { id: true, utorid: true, name: true } });
-    const added = await prisma.eventGuest.create({ data: { eventId, userId: req.auth.sub, confirmed: false } });
+    const added = await prisma.eventGuest.create({ data: { eventId, userId: req.auth.sub, confirmed: true } });
 
     return res.status(201).json({
       id: ev.id,
