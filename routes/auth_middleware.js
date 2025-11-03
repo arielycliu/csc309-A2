@@ -26,10 +26,43 @@ const requireAuth = jwt({
   algorithms: ['HS256'],
 }); // by default, auth is attached to req -> req.auth
 
+
+
+async function attachUser(req, res, next) {
+  try {
+    const userId = req.auth?.sub;              // sub from the token
+    if (!Number.isInteger(userId)) {
+      console.log("attachUser received invalid userID:", userId);
+      return res.status(401).json({ error: 'Invalid token subject' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, utorid: true, role: true, verified: true, suspicious: true },
+    });
+    if (!user) return res.status(401).json({ error: 'User not found' });
+
+    req.user = user; // keep it just in case                        
+    // overwrite req.auth with fresh info from DB
+    req.auth = {
+      ...(req.auth || {}),
+      uid: user.id,
+      utorid: user.utorid,
+      role: user.role,                      
+    };
+    next();
+  } catch (e) {
+    next(e);
+  }
+}
+
+
+// updated requireClearance to use async attachUser to update user role from DB
 function requireClearance(minClearance) {
   if (minClearance === CLEARANCE.ANY) return (req, _res, next) => next();
   return [
     requireAuth,
+    attachUser,
     (req, res, next) => {
       const rank = roleRank(req.auth?.role);
       if (rank < minClearance){
@@ -89,7 +122,7 @@ function requireClearanceUpdateRole(minClearance) {
 }
 
 
-module.exports = { CLEARANCE, requireClearance, requireAuth, roleRank, validatePayload, requireClearanceUpdateRole};
+module.exports = { CLEARANCE, requireClearance, requireAuth, roleRank, validatePayload, requireClearanceUpdateRole, attachUser};
 
 // temp_middleware.js
 // require('dotenv').config();
