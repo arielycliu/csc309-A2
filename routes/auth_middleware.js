@@ -66,6 +66,11 @@ function requireClearance(minClearance) {
     (req, res, next) => {
       const rank = roleRank(req.auth?.role);
       if (rank < minClearance){
+        console.log(`User ${req.auth?.uid} does not have enough clearance: ${rank} < ${minClearance}`);
+        console.log('User role:', req.auth?.role);
+        console.log('Required clearance:', minClearance);
+        console.log('input req.auth:', req.auth);
+        console.log('input url:', req.originalUrl);
         return res.status(403).json({ error: 'Forbidden' })
       };
       next();

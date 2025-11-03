@@ -1,7 +1,7 @@
 const express = require('express');
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
-const { CLEARANCE, requireClearance, roleRank } = require('../auth_middleware');
+const { CLEARANCE, requireClearance, roleRank, requireClearanceUpdateRole } = require('../auth_middleware');
 
 const router = express.Router({ mergeParams: true });
 
@@ -60,6 +60,27 @@ router.post('/', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
     return res.status(500).json({ error: 'Failed to add guest' });
   }
 });
+
+/* DELETE /events/:eventId/guests/me  (REGULAR self-unRSVP) */
+router.delete('/me', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
+  try {
+    const eventId = Number(req.params.eventId);
+    if (!Number.isInteger(eventId)) return res.status(400).json({ error: 'Invalid eventId' });
+
+    const ev = await prisma.event.findUnique({ where: { id: eventId } });
+    if (!ev) return res.status(404).json({ error: 'Event not found' });
+    if (new Date() > ev.endTime) return res.status(410).json({ error: 'Event has ended' });
+
+    const guest = await prisma.eventGuest.findFirst({ where: { eventId, userId: req.auth.sub } });
+    if (!guest) return res.status(404).json({ error: 'Not on guest list' });
+
+    await prisma.eventGuest.delete({ where: { id: guest.id } });
+    return res.status(204).send();
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to un-RSVP' });
+  }
+});
+
 
 /* DELETE /events/:eventId/guests/:userId  (Manager only) */
 router.delete('/:userId', requireClearance(CLEARANCE.MANAGER), async (req, res) => {
@@ -121,24 +142,24 @@ router.post('/me', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
   }
 });
 
-/* DELETE /events/:eventId/guests/me  (REGULAR self-unRSVP) */
-router.delete('/me', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
-  try {
-    const eventId = Number(req.params.eventId);
-    if (!Number.isInteger(eventId)) return res.status(400).json({ error: 'Invalid eventId' });
+// /* DELETE /events/:eventId/guests/me  (REGULAR self-unRSVP) */
+// router.delete('/me', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
+//   try {
+//     const eventId = Number(req.params.eventId);
+//     if (!Number.isInteger(eventId)) return res.status(400).json({ error: 'Invalid eventId' });
 
-    const ev = await prisma.event.findUnique({ where: { id: eventId } });
-    if (!ev) return res.status(404).json({ error: 'Event not found' });
-    if (new Date() > ev.endTime) return res.status(410).json({ error: 'Event has ended' });
+//     const ev = await prisma.event.findUnique({ where: { id: eventId } });
+//     if (!ev) return res.status(404).json({ error: 'Event not found' });
+//     if (new Date() > ev.endTime) return res.status(410).json({ error: 'Event has ended' });
 
-    const guest = await prisma.eventGuest.findFirst({ where: { eventId, userId: req.auth.sub } });
-    if (!guest) return res.status(404).json({ error: 'Not on guest list' });
+//     const guest = await prisma.eventGuest.findFirst({ where: { eventId, userId: req.auth.sub } });
+//     if (!guest) return res.status(404).json({ error: 'Not on guest list' });
 
-    await prisma.eventGuest.delete({ where: { id: guest.id } });
-    return res.status(204).send();
-  } catch (e) {
-    return res.status(500).json({ error: 'Failed to un-RSVP' });
-  }
-});
+//     await prisma.eventGuest.delete({ where: { id: guest.id } });
+//     return res.status(204).send();
+//   } catch (e) {
+//     return res.status(500).json({ error: 'Failed to un-RSVP' });
+//   }
+// });
 
 module.exports = router;
