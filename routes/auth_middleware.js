@@ -30,7 +30,7 @@ const requireAuth = jwt({
 
 async function attachUser(req, res, next) {
   try {
-    const userId = req.auth?.sub;              // sub from the token
+    const userId = Number(req.auth?.sub);              // sub from the token
     if (!Number.isInteger(userId)) {
       console.log("attachUser received invalid userID:", userId);
       return res.status(401).json({ error: 'Invalid token subject' });

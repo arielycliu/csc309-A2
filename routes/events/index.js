@@ -13,6 +13,10 @@ const router = express.Router();
 
 // Helpers
 
+function isTrue(v) {
+  return v === true || v === 'true' || v === 1 || v === '1';
+}
+
 // Distinguish between manager (including superuser) and organizer
 async function isManagerOrOrganizer(req, eventId) {
   if (roleRank(req.auth.role) >= 3) return true; // manager (3) or superuser (4)
@@ -110,6 +114,7 @@ router.post("/", requireClearance(CLEARANCE.MANAGER), async (req, res) => {
 // Get
 router.get('/', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
   try {
+    console.log('role seen by GET /events:', req.auth.role);
     const isManagerView = roleRank(req.auth.role) >= 3;
     const { name, location, started, ended, showFull, page = 1, limit = 10, published } = req.query;
 
@@ -239,7 +244,10 @@ router.get('/:eventId', requireClearance(CLEARANCE.REGULAR), async (req, res) =>
 router.patch('/:eventId', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
   try{
     const eventId = Number(req.params.eventId);
-    if (!Number.isInteger(eventId)) return res.status(400).json({ error: 'Invalid eventId' });
+    if (!Number.isInteger(eventId)) {
+      console.log("Invalid eventId 400 in patch:", req.params.eventId);
+      return res.status(400).json({ error: 'Invalid eventId' });
+    }
 
     const ev = await prisma.event.findUnique({
       where: { id: eventId },
@@ -279,61 +287,99 @@ router.patch('/:eventId', requireClearance(CLEARANCE.REGULAR), async (req, res) 
     const now = new Date();
     const updates = {};
 
-    if (payload.name !== undefined) {
-      if (typeof payload.name !== 'string') return res.status(400).json({ error: 'name must be string' });
+    if (payload.name !== undefined && payload.name !== null) {
+      if (typeof payload.name !== 'string'){
+        console.log("Invalid name 400 in patch:", payload.name); 
+        return res.status(400).json({ error: 'name must be string' });
+      }
       updates.name = payload.name;
     }
 
-    if (payload.description !== undefined) {
-      if (typeof payload.description !== 'string') return res.status(400).json({ error: 'description must be string' });
+    if (payload.description !== undefined && payload.description !== null) {
+      if (typeof payload.description !== 'string') {
+        console.log("Invalid description 400 in patch:", payload.description);
+        return res.status(400).json({ error: 'description must be string' });
+      }
       updates.description = payload.description;
     }
 
-    if (payload.location !== undefined) {
-      if (typeof payload.location !== 'string') return res.status(400).json({ error: 'location must be string' });
+    if (payload.location !== undefined && payload.location !== null) {
+      if (typeof payload.location !== 'string') {
+        console.log("Invalid location 400 in patch:", payload.location);
+        return res.status(400).json({ error: 'location must be string' });
+      }
       updates.location = payload.location;
     }
 
     // do not allow: startTime in the past (st < now)
-    if (payload.startTime !== undefined) {
+    if (payload.startTime !== undefined && payload.startTime !== null) {
       const st = parseISO(payload.startTime);
-      if (!st) return res.status(400).json({ error: 'Invalid startTime' });
-      if (st < now) return res.status(400).json({ error: 'startTime cannot be in the past' });
+      if (!st) {
+        console.log("1 Invalid startTime 400 in patch:", payload.startTime);
+        return res.status(400).json({ error: 'Invalid startTime' });
+      }
+      if (st < now) {
+        console.log("2 Invalid startTime 400 in patch:", payload.startTime);
+        return res.status(400).json({ error: 'startTime cannot be in the past' });
+      }
       updates.startTime = st;
     }
 
-    if (payload.endTime !== undefined) {
+    if (payload.endTime !== undefined && payload.endTime !== null) {
       const et = parseISO(payload.endTime);
-      if (!et) return res.status(400).json({ error: 'Invalid endTime' });
-      if (et < now) return res.status(400).json({ error: 'endTime cannot be in the past' });
+      if (!et) {
+        console.log("1 Invalid endTime 400 in patch:", payload.endTime);
+        return res.status(400).json({ error: 'Invalid endTime' });
+      }
+      if (et < now) {
+        console.log("2 Invalid endTime 400 in patch:", payload.endTime);
+        return res.status(400).json({ error: 'endTime cannot be in the past' });
+      }
       if ((updates.startTime || ev.startTime) && et <= (updates.startTime || ev.startTime)) {
         return res.status(400).json({ error: 'endTime must be after startTime' });
       }
       updates.endTime = et;
     }
 
-    if (payload.capacity !== undefined) {
+    if (payload.capacity !== undefined && payload.capacity !== null) {
       if (payload.capacity !== null) {
         const cap = Number(payload.capacity);
-        if (!Number.isInteger(cap) || cap <= 0) return res.status(400).json({ error: 'updated capacity must be positive integer' });
-        if (confirmedCount > cap) return res.status(400).json({ error: 'New capacity is less than confirmed guests (current implementation assumes all guests are confirmed)' });
+        if (!Number.isInteger(cap) || cap <= 0) {
+          console.log("1 Invalid capacity 400 in patch:", payload.capacity);
+          return res.status(400).json({ error: 'updated capacity must be positive integer' });
+        }
+
+        if (confirmedCount > cap) {
+          console.log("2 Invalid capacity 400 in patch:", payload.capacity);
+          return res.status(400).json({ error: 'New capacity is less than confirmed guests (current implementation assumes all guests are confirmed)' });
+        }
         updates.capacity = cap;
       } else {
+        console.log("3 Invalid capacity 400 in patch:", payload.capacity);
         return res.status(400).json({ error: 'updated capacity cannot be null' });
       }
     }
 
-    if (isMgr && payload.points !== undefined) {
+    if (isMgr && payload.points !== undefined && payload.points !== null) {
       const pts = Number(payload.points);
-      if (!Number.isInteger(pts) || pts <= 0) return res.status(400).json({ error: 'points must be positive integer' });
+      if (!Number.isInteger(pts) || pts <= 0) {
+        console.log("1 Invalid points 400 in patch:", payload.points);
+        return res.status(400).json({ error: 'points must be positive integer' });
+      }
       const newRemain = pts - ev.pointsAwarded;
-      if (newRemain < 0) return res.status(400).json({ error: 'Reducing points below already-awarded total is not allowed' });
+      if (newRemain < 0) {
+        console.log("2 Invalid points 400 in patch:", payload.points);
+        return res.status(400).json({ error: 'Reducing points below already-awarded total is not allowed' });
+      }
       updates.pointsTotal = pts;
       updates.pointsRemain = newRemain;
     }
 
-    if (isMgr && payload.published !== undefined) {
-      if (payload.published !== true) return res.status(400).json({ error: 'published can only be set to true' });
+    if (isMgr && payload.published !== undefined && payload.published !== null) {
+      if (!isTrue(payload.published)) {
+        console.log("1 Invalid published 400 in patch:", payload.published);
+        return res.status(400).json({ error: 'published can only be set to true' });
+      }
       updates.published = true;
     }
 
@@ -360,10 +406,10 @@ router.delete('/:eventId', requireClearance(CLEARANCE.MANAGER),  async (req, res
     const ev = await prisma.event.findUnique({ where: { id: eventId }, select: { published: true } });
     if (!ev) return res.status(404).json({ error: 'Event not found' });
 
-    if (ev.published) return res.status(400).json({ error: 'Cannot delete a published event' });
+    if (isTrue(ev.published)) return res.status(400).json({ error: 'Cannot delete a published event' });
 
     await prisma.event.delete({ where: { id: eventId } });
-    
+
     return res.status(204).send();
   } catch (e) {
     return res.status(500).json({ error: 'Failed to delete event' });
