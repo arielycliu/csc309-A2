@@ -65,7 +65,7 @@ router.post('/me/transactions', requireClearance(CLEARANCE.REGULAR), async (req,
     await prisma.$transaction(async (prisma) => {
         const pointAmount = parseInt(amount);
         const userId = parseInt(req.auth.sub);
-        const user = prisma.user.findUnique({
+        const user = await prisma.user.findUnique({
             where: { id: userId }
         });
         if (!user) {
@@ -90,12 +90,12 @@ router.post('/me/transactions', requireClearance(CLEARANCE.REGULAR), async (req,
 
         const result = {
             id: transaction.id,
-            sender: user.name,
+            utorid: user.utorid,
             type,
             processedBy: transaction.processedById,
             amount: pointAmount,
             remark: remark ?? "",
-            createdBy: user.name
+            createdBy: user.utorid
         }
         res.status(201).json(result);
     })

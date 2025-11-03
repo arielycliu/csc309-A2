@@ -61,6 +61,10 @@ router.patch('/:transactionId/processed', requireClearance(CLEARANCE.CASHIER), a
             where: { id: cashierId }
         })
 
+        const creator = await prisma.user.findUnique({
+            where: { id: transaction.createdById }
+        })
+
         const result = {
             id: transactionId,
             utorid: user.utorid,
@@ -68,7 +72,7 @@ router.patch('/:transactionId/processed', requireClearance(CLEARANCE.CASHIER), a
             processedBy: cashier.utorid,
             redeemed: -1 * transaction.amount,
             remark: transaction.remark,
-            createdBy: transaction.createdById
+            createdBy: creator ? creator.utorid : null
         }
         return res.status(200).json(result);
     });
