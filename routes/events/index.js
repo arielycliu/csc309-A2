@@ -114,52 +114,61 @@ router.post("/", requireClearance(CLEARANCE.MANAGER), async (req, res) => {
 // Get
 router.get('/', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
   try {
-    console.log('role seen by GET /events:', req.auth.role);
-    const isManagerView = roleRank(req.auth.role) >= 3;
-    const { name, location, started, ended, showFull, page = 1, limit = 10, published } = req.query;
+    const isManager = roleRank(req.auth.role) >= 3;
+    const {
+      name, location, started, ended, showFull, page = '1', limit = '10', published
+    } = req.query;
 
+    // helpers
+    const parseBool = v => (v === true || v === 'true');
+    const now = new Date();
+
+    // 400 if both started & ended are present
     if (started !== undefined && ended !== undefined) {
       return res.status(400).json({ error: 'Specify only one of started or ended' });
     }
+    const pageNum = Number(page), limitNum = Number(limit);
+    if (!Number.isInteger(pageNum) || pageNum < 1)
+      return res.status(400).json({ error: 'page must be a positive integer' });
+    if (!Number.isInteger(limitNum) || limitNum < 1 || limitNum > 100)
+      return res.status(400).json({ error: 'limit must be an integer in [1,100]' });
 
-    const now = new Date();
+    // base filters
     const where = {};
-    // Filter based on published status
-
-    // if not manager/superuser view, only show published events
-    if (!isManagerView) where.published = true;
-    // if manager view, can filter by published status
-    else if (published !== undefined) where.published = String(published) === 'true';
-    // Other filters
-    if (name) where.name = { contains: String(name), mode: 'insensitive' };
-    if (location) where.location = { contains: String(location), mode: 'insensitive' };
-    if (started !== undefined) where.startTime = (String(started) === 'true') ? { lte: now } : { gt: now };
-    if (ended !== undefined) where.endTime = (String(ended) === 'true') ? { lte: now } : { gt: now };
-
-    if (String(started) === 'true' && String(ended) === 'true') {
-      return res.status(400).json({ error: 'Cannot filter by both started and ended being true' });
+    if (!isManager) {
+      // regular users only see published
+      where.published = true;
+    } else if (published !== undefined) {
+      // manager/super may filter by published
+      where.published = parseBool(published);
     }
 
-    const take = Math.max(1, Math.min(100, Number(limit))); // Avoid too large limits (not sure if necessary with in this assignment)
-    const skip = (Math.max(1, Number(page)) - 1) * take;
+    if (name)     where.name     = { contains: String(name),     mode: 'insensitive' };
+    if (location) where.location = { contains: String(location), mode: 'insensitive' };
+    if (started !== undefined) where.startTime = parseBool(started) ? { lte: now } : { gt: now };
+    if (ended   !== undefined) where.endTime   = parseBool(ended)   ? { lte: now } : { gt: now };
 
-    // Count here is total matching before filtering full events
-    const [count, rows] = await Promise.all([
-      prisma.event.count({ where }),
+    // fetch all (for count after showFull) and the page (for results)
+    const [allMatching, pageRows] = await Promise.all([
       prisma.event.findMany({
-        where, skip, take, orderBy: { id: 'asc' },
+        where, orderBy: { id: 'asc' },
+        include: { _count: { select: { guests: true } } },
+      }),
+      prisma.event.findMany({
+        where,
+        skip: (pageNum - 1) * limitNum, take: limitNum,
+        orderBy: { id: 'asc' },
         include: { _count: { select: { guests: true } } },
       }),
     ]);
 
-    // If showFull is false, filter out full events
-    let filteredRows = rows;
-    if (String(showFull || 'false') === 'false') {
-      // Now, filteredRows only include events where capacity is null or numGuests < capacity
-      filteredRows = rows.filter(ev => (ev.capacity == null) || (ev._count.guests < ev.capacity));
-    }
+    const filterFull = evs =>
+      parseBool(showFull) ? evs : evs.filter(ev => ev.capacity == null || ev._count.guests < ev.capacity);
 
-    const results = filteredRows.map(ev => {
+    const filteredAll  = filterFull(allMatching);
+    const filteredPage = filterFull(pageRows);
+
+    const results = filteredPage.map(ev => {
       const base = {
         id: ev.id,
         name: ev.name,
@@ -169,15 +178,18 @@ router.get('/', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
         capacity: ev.capacity,
         numGuests: ev._count.guests || 0,
       };
-      return isManagerView ? { ...base, pointsRemain: ev.pointsRemain, pointsAwarded: ev.pointsAwarded, published: ev.published } : base;
+      return isManager
+        ? { ...base, pointsRemain: ev.pointsRemain, pointsAwarded: ev.pointsAwarded, published: ev.published }
+        : base;
     });
 
-    const adjustedCount = (String(showFull || 'false') === 'false') ? results.length : count;
-    return res.status(200).json({ count: adjustedCount, results });
+    return res.status(200).json({ count: filteredAll.length, results });
   } catch (e) {
-    return res.status(500).json({ error: 'Failed to fetch events (Exception in events GET)' });
+    return res.status(500).json({ error: 'Failed to fetch events' });
   }
 });
+
+
 
 // Get /:eventId
 router.get('/:eventId', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
@@ -260,7 +272,7 @@ router.patch('/:eventId', requireClearance(CLEARANCE.REGULAR), async (req, res) 
     });
 
     const confirmedCount = await prisma.eventGuest.count({
-      where: { eventId, confirmed: true },
+      where: { eventId }, 
     });
 
     if (!ev) return res.status(404).json({ error: 'Event not found' });
@@ -288,6 +300,18 @@ router.patch('/:eventId', requireClearance(CLEARANCE.REGULAR), async (req, res) 
     const updates = {};
 
     if (payload.name !== undefined && payload.name !== null) {
+      // cannot make change after original startTime
+
+      if (now >= ev.startTime) {
+        console.log("Cannot update name after startTime 400 in patch");
+        return res.status(400).json({ error: 'Cannot update name after event has started' });
+      }
+
+      if (now >= ev.endTime) {
+        console.log("Cannot update name after endTime 400 in patch");
+        return res.status(400).json({ error: 'Cannot update name after event has ended' });
+      }
+
       if (typeof payload.name !== 'string'){
         console.log("Invalid name 400 in patch:", payload.name); 
         return res.status(400).json({ error: 'name must be string' });
@@ -296,6 +320,12 @@ router.patch('/:eventId', requireClearance(CLEARANCE.REGULAR), async (req, res) 
     }
 
     if (payload.description !== undefined && payload.description !== null) {
+
+      if (now >= ev.startTime) {
+        console.log("Cannot update description after startTime 400 in patch");
+        return res.status(400).json({ error: 'Cannot update description after event has started' });
+      }
+
       if (typeof payload.description !== 'string') {
         console.log("Invalid description 400 in patch:", payload.description);
         return res.status(400).json({ error: 'description must be string' });
@@ -304,6 +334,12 @@ router.patch('/:eventId', requireClearance(CLEARANCE.REGULAR), async (req, res) 
     }
 
     if (payload.location !== undefined && payload.location !== null) {
+
+      if (now >= ev.startTime) {
+        console.log("Cannot update location after startTime 400 in patch");
+        return res.status(400).json({ error: 'Cannot update location after event has started' });
+      }
+
       if (typeof payload.location !== 'string') {
         console.log("Invalid location 400 in patch:", payload.location);
         return res.status(400).json({ error: 'location must be string' });
@@ -313,6 +349,13 @@ router.patch('/:eventId', requireClearance(CLEARANCE.REGULAR), async (req, res) 
 
     // do not allow: startTime in the past (st < now)
     if (payload.startTime !== undefined && payload.startTime !== null) {
+
+      if (now >= ev.startTime) {
+        console.log("Cannot update startTime after startTime 400 in patch");
+        return res.status(400).json({ error: 'Cannot update startTime after event has started' });
+      }
+
+
       const st = parseISO(payload.startTime);
       if (!st) {
         console.log("1 Invalid startTime 400 in patch:", payload.startTime);
@@ -326,6 +369,13 @@ router.patch('/:eventId', requireClearance(CLEARANCE.REGULAR), async (req, res) 
     }
 
     if (payload.endTime !== undefined && payload.endTime !== null) {
+
+      if (now >= ev.startTime) {
+        console.log("Cannot update endTime after startTime 400 in patch");
+        return res.status(400).json({ error: 'Cannot update endTime after event has started' });
+      }
+
+
       const et = parseISO(payload.endTime);
       if (!et) {
         console.log("1 Invalid endTime 400 in patch:", payload.endTime);
@@ -342,8 +392,14 @@ router.patch('/:eventId', requireClearance(CLEARANCE.REGULAR), async (req, res) 
     }
 
     if (payload.capacity !== undefined && payload.capacity !== null) {
+
+      if (now >= ev.startTime) {
+        console.log("Cannot update capacity after startTime 400 in patch");
+        return res.status(400).json({ error: 'Cannot update capacity after event has started' });
+      }
       if (payload.capacity !== null) {
         const cap = Number(payload.capacity);
+
         if (!Number.isInteger(cap) || cap <= 0) {
           console.log("1 Invalid capacity 400 in patch:", payload.capacity);
           return res.status(400).json({ error: 'updated capacity must be positive integer' });
