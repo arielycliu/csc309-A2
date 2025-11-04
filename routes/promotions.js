@@ -113,6 +113,7 @@ router.get('/', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
     const rank = roleRank(req.auth?.role);
     const isManagerOrHigher = rank >= 3;
     const isRegular = req.auth?.role === 'regular';
+    const isCashier = req.auth?.role === 'cashier';
     const { name, type, page, limit, started, ended } = req.query;
 
     const validations = [
@@ -143,38 +144,45 @@ router.get('/', requireClearance(CLEARANCE.REGULAR), async (req, res) => {
         filters.name = { contains: name, mode: 'insensitive' };
     }
     if (type && ['automatic', 'one-time'].includes(type)) {
-        filters.type = { type };
+        const prismaType = type === 'one-time' ? PromotionType.onetime : PromotionType.automatic;
+        filters.type = { prismaType };
     }
 
     if (isManagerOrHigher) {
         if (started && ended) {
-            res.status(405).json({ 'error': 'Bad request: both "started" and "ended" fields are specified' });
+            return res.status(400).json({ 'error': 'Bad request: both "started" and "ended" fields are specified' });
         }
-        if (started) {
+        if (started === true || started === "true") {
             filters.startTime = { lte: now };
+        } else if (started === false || started === "false") {
+            filters.startTime = { gt: now };
         }
-        if (ended) {
-            filters.endTime = { lte: now };
+        if (ended === true || ended === "true") {
+            filters.endTime = { lt: now };
+        } else if (ended === false || ended === "false") {
+            filters.endTime = { gte: now };
         }
     }
-    if (isRegular) {
+    if (isRegular || isCashier) {
         const userId = req.auth?.sub;
 
         // regular user: show only active promotions
         filters.startTime = { lte: now };
-        filters.endTime = { gte: now };
+        filters.endTime = { gt: now };
 
         // removed used promotions
-        const transactionIds = await prisma.user.findUnique({
+        let transactionIds = await prisma.transaction.findMany({
             where: { userId },
-            select: { ownedTransactions: { select: { id: true } } }
+            select: { id: true }
         });
-        const usedPromotionIds = await prisma.transactionPromotion.findMany({
-            where: { transaction: { in: transactionIds } },
+        transactionIds = transactionIds.map(t => t.id);
+        let usedPromotionIds = await prisma.transactionPromotion.findMany({
+            where: { transactionId: { in: transactionIds } },
             select: { promotionId: true }
         });
+        usedPromotionIds = usedPromotionIds.map(p => p.promotionId);
         if (usedPromotionIds.length > 0) {
-            filters.id = { notIn: usedPromotionIds.map(p => p.promotionId) };
+            filters.id = { notIn: usedPromotionIds };
         }
     }
 
@@ -263,6 +271,7 @@ router.patch('/:promotionId', requireClearance(CLEARANCE.MANAGER), async (req, r
     });
 
     if (!existingPromotion) {
+        // console.log('Promotion not found');
         return res.status(404).json({ 'error': 'Promotion not found' });
     }
 
@@ -276,75 +285,85 @@ router.patch('/:promotionId', requireClearance(CLEARANCE.MANAGER), async (req, r
 
     const validations = [];
 
-    if (name !== undefined) {
+    if (name != null) {
         validations.push(() => validators.name(name, true));
         if (hasStarted) {
+            // console.log('Bad Request: cannot update name after the original start time has passed');
             return res.status(400).json({ 'error': 'Bad Request: cannot update name after the original start time has passed' });
         }
         fieldsToUpdate.name = name;
     }
 
-    if (description !== undefined) {
+    if (description != null) {
         validations.push(() => validators.description(description, true));
         if (hasStarted) {
+            // console.log('Bad Request: cannot update description after the original start time has passed');
             return res.status(400).json({ 'error': 'Bad Request: cannot update description after the original start time has passed' });
         }
         fieldsToUpdate.description = description;
     }
 
-    if (type !== undefined) {
+    if (type != null) {
         validations.push(() => validators.type(type, true));
         if (hasStarted) {
+            // console.log('Bad Request: cannot update type after the original start time has passed');
             return res.status(400).json({ 'error': 'Bad Request: cannot update type after the original start time has passed' });
         }
         const prismaType = type === 'one-time' ? PromotionType.onetime : PromotionType.automatic;
         fieldsToUpdate.type = prismaType;
     }
 
-    if (startTime !== undefined) {
+    if (startTime != null) {
         validations.push(() => validators.startTime(startTime, true));
         const startTimeDate = new Date(startTime);
-        if (startTimeDate < now) {
+        if (!isNaN(startTimeDate) && startTimeDate < now) {
+            // console.log('Bad Request: start time must not be in the past');
             return res.status(400).json({ 'error': 'Bad Request: start time must not be in the past' });
         }
         if (hasStarted) {
+            // console.log('Bad Request: cannot update startTime after the original start time has passed');
             return res.status(400).json({ 'error': 'Bad Request: cannot update startTime after the original start time has passed' });
         }
         fieldsToUpdate.startTime = startTimeDate;
     }
 
-    if (endTime !== undefined) {
-        const effectiveStartTime = startTime !== undefined ? startTime : existingPromotion.startTime;
+    if (endTime != null) {
+        const effectiveStartTime = startTime != null ? startTime : existingPromotion.startTime;
         validations.push(() => validators.endTime(endTime, effectiveStartTime, true));
         const endTimeDate = new Date(endTime);
-        if (endTimeDate < now) {
+        if (!isNaN(endTimeDate) && endTimeDate < now) {
+            // console.log('end time must not be in the past');
             return res.status(400).json({ 'error': 'Bad Request: end time must not be in the past' });
         }
         if (hasEnded) {
+            // console.log('cannot update endTime after the original end time has passed');
             return res.status(400).json({ 'error': 'Bad Request: cannot update endTime after the original end time has passed' });
         }
         fieldsToUpdate.endTime = endTimeDate;
     }
 
-    if (minSpending !== undefined) {
+    if (minSpending != null) {
         validations.push(() => validators.minSpending(minSpending, true));
         if (hasStarted) {
+            // console.log('Bad Request: cannot update minSpending after the original start time has passed');
             return res.status(400).json({ 'error': 'Bad Request: cannot update minSpending after the original start time has passed' });
         }
         fieldsToUpdate.minSpending = minSpending;
     }
 
-    if (rate !== undefined) {
+    if (rate != null) {
         validations.push(() => validators.rate(rate, true));
         if (hasStarted) {
+            // console.log('Bad Request: cannot update rate after the original start time has passed');
             return res.status(400).json({ 'error': 'Bad Request: cannot update rate after the original start time has passed' });
         }
         fieldsToUpdate.rate = rate;
     }
 
-    if (points !== undefined) {
+    if (points != null) {
         validations.push(() => validators.points(points, false));
         if (hasStarted) {
+            // console.log('Bad Request: cannot update points after the original start time has passed');
             return res.status(400).json({ 'error': 'Bad Request: cannot update points after the original start time has passed' });
         }
         fieldsToUpdate.points = points;
@@ -374,17 +393,17 @@ router.patch('/:promotionId', requireClearance(CLEARANCE.MANAGER), async (req, r
         type: updatedPromotionType,
     };
 
-    if (description !== undefined) response.description = updatedPromotion.description;
-    if (startTime !== undefined) response.startTime = updatedPromotion.startTime;
-    if (endTime !== undefined) response.endTime = updatedPromotion.endTime;
-    if (minSpending !== undefined) response.minSpending = updatedPromotion.minSpending;
-    if (rate !== undefined) response.rate = updatedPromotion.rate;
-    if (points !== undefined) response.points = updatedPromotion.points;
+    if (description != null) response.description = updatedPromotion.description;
+    if (startTime != null) response.startTime = updatedPromotion.startTime;
+    if (endTime != null) response.endTime = updatedPromotion.endTime;
+    if (minSpending != null) response.minSpending = updatedPromotion.minSpending;
+    if (rate != null) response.rate = updatedPromotion.rate;
+    if (points != null) response.points = updatedPromotion.points;
 
     res.status(200).json(response);
 });
 
-// update an existing promotion
+// delete an existing promotion
 router.delete('/:promotionId', requireClearance(CLEARANCE.MANAGER), async (req, res) => {
     const promotionId = req.params["promotionId"];
 
