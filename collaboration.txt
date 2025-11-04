@@ -1,4 +1,4 @@
-Team Member: Pete Chen (utorid: chenj771), Gary Zhou (utorid: zhousih5), Favour Nwanna, Ying Chen (Ariel) Liu (utorid: liuyi160)
+Team Member: Pete Chen (utorid: chenj771), Gary Zhou (utorid: zhousih5), Favour Nwanna (utorid: nwannafa), Ying Chen (Ariel) Liu (utorid: liuyi160)
 
 Contribution:
 1. Prisma schema -> Gary, Superuser script -> Favour, Auth Middleware -> Favour & Pete
