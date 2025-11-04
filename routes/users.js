@@ -1,4 +1,4 @@
-const { CLEARANCE, requireClearance, validatePayload, roleRank, requireClearanceUpdateRole} = require('./auth_middleware');
+const { CLEARANCE, requireClearance, validatePayload} = require('./auth_middleware');
 const { v4: uuidv4 } = require('uuid');
 const {z} = require("zod");
 const bcrypt = require('bcrypt');
@@ -25,7 +25,7 @@ const createUsersPayload = z.object({
     }),
 });
 
-router.post("/", requireClearanceUpdateRole(CLEARANCE.CASHIER), validatePayload(createUsersPayload), async (req, res) => {
+router.post("/", requireClearance(CLEARANCE.CASHIER), validatePayload(createUsersPayload), async (req, res) => {
     
    //user authenticated as cashier or higher, required field checked 
    const {utorid, name, email} = req.body;
@@ -81,7 +81,7 @@ const getUsersPayload = z.object({
 
 });
 
-router.get("/", requireClearanceUpdateRole(CLEARANCE.MANAGER), validatePayload(getUsersPayload), async(req, res)=> {
+router.get("/", requireClearance(CLEARANCE.MANAGER), validatePayload(getUsersPayload), async(req, res)=> {
     //console.log(req.query)
     // console.log({
     // body: req.body,
@@ -189,7 +189,7 @@ const patchSelfPayload = z.object({
     
 });
 
-router.patch("/me", requireClearanceUpdateRole(CLEARANCE.REGULAR), upload.single("avatar"), validatePayload(patchSelfPayload), async(req, res)=> {
+router.patch("/me", requireClearance(CLEARANCE.REGULAR), upload.single("avatar"), validatePayload(patchSelfPayload), async(req, res)=> {
     var data = {};
     const {name, email, birthday} = req.body;
 
@@ -234,7 +234,7 @@ router.patch("/me", requireClearanceUpdateRole(CLEARANCE.REGULAR), upload.single
 
 });
 
-router.get("/me", requireClearanceUpdateRole(CLEARANCE.REGULAR), async(req, res) =>{
+router.get("/me", requireClearance(CLEARANCE.REGULAR), async(req, res) =>{
     // console.log({
     // body: req.body,
     // query: req.query,
@@ -263,7 +263,7 @@ router.get("/me", requireClearanceUpdateRole(CLEARANCE.REGULAR), async(req, res)
       
 });
 
-router.get("/:userId", requireClearanceUpdateRole(CLEARANCE.CASHIER), async(req, res)=>{
+router.get("/:userId", requireClearance(CLEARANCE.CASHIER), async(req, res)=>{
     //console.log("get user", req.body);
 
     // build select depengind on users role
@@ -324,7 +324,7 @@ const patchUserSchema = z.object({
     role: z.enum(['regular', 'cashier', 'manager', 'superuser']).optional().nullable(),
 });
 
-router.patch("/:userId", requireClearanceUpdateRole(CLEARANCE.MANAGER), validatePayload(patchUserSchema), async(req, res)=>{
+router.patch("/:userId", requireClearance(CLEARANCE.MANAGER), validatePayload(patchUserSchema), async(req, res)=>{
     // console.log({
     // body: req.body,
     // query: req.query,
@@ -371,14 +371,14 @@ router.patch("/:userId", requireClearanceUpdateRole(CLEARANCE.MANAGER), validate
     if(role){
         //for manager can only update roles of cashier or regular
         if(req.auth.role === 'manager' && (role === 'manager' || role === 'superuser') ){  
-            console.log({
-            body: req.body,
-            query: req.query,
-            params: req.params,
-            headers: req.headers,
-            method: req.method,
-            url: req.url,
-            error: `manager not permitted to make role update for role - ${role}`})  
+            // console.log({
+            // body: req.body,
+            // query: req.query,
+            // params: req.params,
+            // headers: req.headers,
+            // method: req.method,
+            // url: req.url,
+            // error: `manager not permitted to make role update for role - ${role}`})  
             return res.status(403).json({error: `manager not permitted to make role update for role - ${role}`});   
         }
 
@@ -430,7 +430,7 @@ const updateOwnPasswordSchema = z.object({
   .regex(/[^A-Za-z0-9]/, "Password must contain at least one special character")
 });
 
-router.patch("/me/password", requireClearanceUpdateRole(CLEARANCE.REGULAR), validatePayload(updateOwnPasswordSchema), async(req, res)=> {
+router.patch("/me/password", requireClearance(CLEARANCE.REGULAR), validatePayload(updateOwnPasswordSchema), async(req, res)=> {
     //console.log("PATCH /me/password body:", req.body);
     
     const {old, new:newPassword} = req.body;
