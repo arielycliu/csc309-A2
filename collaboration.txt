@@ -1,0 +1,11 @@
+Team Member: Pete Chen (utorid: chenj771), Gary Zhou, Favour Nwanna, Ariel Liu
+
+Contribution:
+1. Prisma schema -> Gary, Superuser script -> Favour, Auth Middleware -> Favour & Pete
+2. Users Endpoints: Favour
+3. Auth Endpoints: Gary
+4. Transactions Endpoints: Gary & Ariel
+5. Event Endpoints: Pete
+6. Promotion Endpoints: Ariel
+
+All members contributed equally to this assignment.
