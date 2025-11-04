@@ -8,7 +8,7 @@ function validateString(value, fieldName, options = {}) {
     }
 
     if (typeof value !== 'string') {
-        return `${fieldName} should be a string`;
+        return `${fieldName} should be a string; ${value}`;
     }
 
     return null;
@@ -24,7 +24,7 @@ function validateEnum(value, fieldName, allowedValues, options = {}) {
     }
 
     if (!allowedValues.includes(value)) {
-        return `${fieldName} must be either ${allowedValues.map(v => `'${v}'`).join(' or ')}`;
+        return `${fieldName} must be either ${allowedValues.map(v => `'${v}'`).join(' or ')}; ${value}`;
     }
 
     return null;
@@ -46,13 +46,13 @@ function validateDate(value, fieldName, options = {}) {
 
     const date = new Date(value);
     if (isNaN(date.getTime())) {
-        return `${fieldName} must be a valid date`;
+        return `${fieldName} must be a valid date; ${value}`;
     }
 
     if (mustNotBePast) {
         const now = new Date();
         if (date < now) {
-            return `${fieldName} must not be in the past`;
+            return `${fieldName} must not be in the past; ${value}`;
         }
     }
 
@@ -77,17 +77,17 @@ function validateNumber(value, fieldName, options = {}) {
 
     if (required && value === undefined) {
         return `missing field: ${fieldName}`;
-    } else if (!required && value === undefined) {
+    } else if (!required && (value === undefined || value === null)) {
         return null;
     }
 
     if (requireInteger) {
         if (!Number.isInteger(value)) {
-            return `${fieldName} must be a valid integer`;
+            return `${fieldName} must be a valid integer; ${value}`;
         }
     } else {
-        if (isNaN(value)) {
-            return `${fieldName} must be a valid number`;
+        if (Number.isNaN(value)) {
+            return `${fieldName} must be a valid number; ${value}`;
         }
     }
 
@@ -96,7 +96,7 @@ function validateNumber(value, fieldName, options = {}) {
         if (!isValid) {
             const comparison = minInclusive ? 'greater than or equal to' : 'greater than';
             const typeLabel = requireInteger ? 'integer' : 'number';
-            return `${fieldName} must be a valid ${typeLabel}, ${comparison} ${minValue}`;
+            return `${fieldName} must be a valid ${typeLabel}, ${comparison} ${minValue}; ${value}`;
         }
     }
 
@@ -112,8 +112,14 @@ function validateBoolean(value, fieldName, options = {}) {
         return null;
     }
 
+    if (typeof value === 'string') {
+        if (value === 'true' || value === 'True') value = true;
+        else if (value === 'false' || value === 'False') value = false;
+        else return `${fieldName} should be a boolean; ${value}`;
+    }
+
     if (typeof value !== 'boolean') {
-        return `${fieldName} should be a boolean`;
+        return `${fieldName} should be a boolean; ${value}`;
     }
 
     return null;
@@ -123,6 +129,7 @@ function validateInputFields(validations, res) {
     for (let validationFunction of validations) {
         let error = validationFunction();
         if (error) {
+            // console.log({ 'error': `Bad Request: ${error}.` });
             res.status(400).json({ 'error': `Bad Request: ${error}` });
             return true;
         }

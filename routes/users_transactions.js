@@ -131,28 +131,28 @@ router.get('/me/transactions', requireClearance(CLEARANCE.REGULAR), async (req, 
     const take = limitNumber;
 
     const userId = parseInt(req.auth.sub);
-    const user = prisma.user.findUnique({
+    const user = await prisma.user.findUnique({
         where: { id: userId }
     });
     if (!user) {
         return res.status(500).json({ 'error': 'UserId of self not found' })
     }
 
-    filters = { relatedUserId: userId }
-    if (type) {
+    filters = { userId: userId }
+    if (type != null) {
         filters.type = { type }
     }
-    if (relatedId && type) {
+    if (relatedId != null && type != null) {
         filters.relatedTransactionId = { relatedId }
     }
-    if (promotionId) {
+    if (promotionId != null) {
         filters.promotions = { 
             some: {
                 id: promotionId
             }
         }
     }
-    if (amount && operator) {
+    if (amount != null && operator != null) {
         filters.amount = {
             [operator]: amount
         }
@@ -211,7 +211,7 @@ router.post('/:userId/transactions', requireClearance(CLEARANCE.REGULAR), async 
             return res.status(403).json({ 'error': 'Sender cannot send money, they need to be verified first' })
         }
 
-        const receiver = prisma.user.findUnique({
+        const receiver = await prisma.user.findUnique({
             where: { id: receiverId }
         });
         if (!receiver) {
@@ -266,12 +266,12 @@ router.post('/:userId/transactions', requireClearance(CLEARANCE.REGULAR), async 
 
         const result = {
             id: senderTransaction.id,
-            sender: sender.name,
-            recipient: receiver.name,
+            sender: sender.utorid,
+            recipient: receiver.utorid,
             type,
             sent: pointAmount,
             remark,
-            createdBy: sender.name
+            createdBy: sender.utorid
         }
         res.status(201).json(result);
     })
