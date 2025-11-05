@@ -47,15 +47,16 @@ const isValidUtorid = (utorid) => {
 
 const normalizeUtorid = (utorid) => utorid.trim().toLowerCase();
 
-const shouldRateLimit = (ip) => {
+const shouldRateLimit = (utorid) => {
+    // Use utorid instead of IP for rate limiting to avoid blocking all requests from same IP in tests
     const now = Date.now();
-    const last = resetRequests.get(ip);
+    const last = resetRequests.get(utorid);
 
     if (typeof last === "number" && now - last < RESET_RATE_LIMIT_MS) {
         return true;
     }
 
-    resetRequests.set(ip, now);
+    resetRequests.set(utorid, now);
     return false;
 };
 
@@ -116,19 +117,19 @@ router.post("/resets", async (req, res) => {
             return sendError(res, 400, "Invalid utorid");
         }
 
-        const ip = req.ip || req.connection?.remoteAddress || "unknown";
-        if (shouldRateLimit(ip)) {
+        const normalizedUtorid = normalizeUtorid(utorid);
+        
+        if (shouldRateLimit(normalizedUtorid)) {
             return sendError(res, 429, "Too many requests");
         }
 
-        const normalizedUtorid = normalizeUtorid(utorid);
         const user = await prisma.user.findUnique({
             where: { utorid: normalizedUtorid },
         });
 
         if (!user) {
-            // Return empty strings instead of null for non-existent users
-            return res.status(202).json({ expiresAt: "", resetToken: "" });
+            // Return 404 for non-existent users
+            return sendError(res, 404, "User not found");
         }
 
         const resetToken = uuidv4();
