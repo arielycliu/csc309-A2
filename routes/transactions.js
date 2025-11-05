@@ -70,7 +70,7 @@ const hasMinRole = (actor, minimumRole) =>
 	roleRank[actor.role] >= roleRank[minimumRole];
 
 const normalizePromotionIds = (promotionIds) => {
-	if (promotionIds === undefined) {
+	if (promotionIds === null) {
 		return [];
 	}
 
@@ -440,8 +440,11 @@ const handleAdjustmentCreation = async (req, res) => {
 	try {
 		const { utorid, amount, relatedId, promotionIds, remark } = req.body || {};
 
-		if (!utorid || typeof utorid !== "string") {
-			return sendError(res, 400, "utorid is required");
+		// utorid can be null/undefined for adjustments - we'll use the related transaction's user
+		if (utorid !== null && utorid !== undefined) {
+			if (typeof utorid !== "string") {
+				return sendError(res, 400, "utorid must be a string");
+			}
 		}
 
 		const amountValue =
@@ -469,14 +472,6 @@ const handleAdjustmentCreation = async (req, res) => {
 		const promotionIdList = normalizePromotionIds(promotionIds);
 
 		const result = await prisma.$transaction(async (tx) => {
-			const target = await tx.user.findUnique({
-				where: { utorid: normalizeUtorid(utorid) },
-			});
-
-			if (!target) {
-				throw new HttpError(404, "User not found");
-			}
-
 			const relatedTx = await tx.transaction.findUnique({
 				where: { id: relatedTxId },
 			});
@@ -485,8 +480,30 @@ const handleAdjustmentCreation = async (req, res) => {
 				throw new HttpError(404, "Related transaction not found");
 			}
 
-			if (relatedTx.userId !== target.id) {
-				throw new HttpError(400, "relatedId does not match the user");
+			// If utorid is provided, verify it matches the related transaction's user
+			// Otherwise, use the related transaction's user
+			let target;
+			if (utorid) {
+				target = await tx.user.findUnique({
+					where: { utorid: normalizeUtorid(utorid) },
+				});
+
+				if (!target) {
+					throw new HttpError(404, "User not found");
+				}
+
+				if (relatedTx.userId !== target.id) {
+					throw new HttpError(400, "relatedId does not match the user");
+				}
+			} else {
+				// Use the user from the related transaction
+				target = await tx.user.findUnique({
+					where: { id: relatedTx.userId },
+				});
+
+				if (!target) {
+					throw new HttpError(404, "User not found");
+				}
 			}
 
 			const { promotions, extraPoints } = await loadAndValidatePromotions(
