@@ -9,6 +9,10 @@ Contribution:
       - /users/:userId/transactions
       - /users/me/transactions
       - /transactions/:transactionId/processed
+   - Gary's endpoints:
+      - /transactions
+      - /transactions/:transactionId
+      - /transactions/:transactionId/suspicious
 5. Event Endpoints: Pete
 6. Promotion Endpoints: Ariel
 
