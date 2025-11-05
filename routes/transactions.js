@@ -421,7 +421,7 @@ const handlePurchaseCreation = async (req, res) => {
 			utorid: result.target.utorid,
 			type: TransactionType.purchase,
 			spent: result.created.spent,
-			earned: result.created.amount ?? 0,
+			earned: result.created.suspicious ? 0 : (result.created.amount ?? 0),
 			remark: result.created.remark ?? "",
 			promotionIds: promotionIdResponse,
 			createdBy: req.actor.utorid,
@@ -481,7 +481,11 @@ const handleAdjustmentCreation = async (req, res) => {
 				where: { id: relatedTxId },
 			});
 
-			if (!relatedTx || relatedTx.userId !== target.id) {
+			if (!relatedTx) {
+				throw new HttpError(404, "Related transaction not found");
+			}
+
+			if (relatedTx.userId !== target.id) {
 				throw new HttpError(400, "relatedId does not match the user");
 			}
 
