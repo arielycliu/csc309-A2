@@ -159,16 +159,19 @@ router.post("/resets/:resetToken", async (req, res) => {
             return sendError(res, 400, "Invalid payload");
         }
 
-        const normalizedUtorid = normalizeUtorid(utorid);
+        // First, find user by reset token only
         const user = await prisma.user.findFirst({
-            where: {
-                utorid: normalizedUtorid,
-                resetToken,
-            },
+            where: { resetToken },
         });
 
         if (!user) {
             return sendError(res, 404, "Reset token not found");
+        }
+
+        // Check if utorid matches the token owner
+        const normalizedUtorid = normalizeUtorid(utorid);
+        if (user.utorid !== normalizedUtorid) {
+            return sendError(res, 401, "Unauthorized");
         }
 
         if (!user.resetExpiresAt || user.resetExpiresAt.getTime() < Date.now()) {
